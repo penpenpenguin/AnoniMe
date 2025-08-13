@@ -74,41 +74,28 @@ ColumnLayout {
     }
 
     Component.onCompleted: {
-        // 只連一次
         if (typeof backend !== "undefined"
                 && backend.resultsReady
                 && !backend._uploadConnected) {
 
             backend.resultsReady.connect(function(json) {
-                // 1. 解析
-                let arr = []
+                console.log("UploadPage: resultsReady 收到 JSON 長度 =", json.length)
+                let arr
                 try {
                     arr = JSON.parse(json)
-                } catch (e) {
-                    console.log("結果解析失敗(JSON parse error):", e)
+                } catch(e) {
+                    console.log("UploadPage: JSON 解析失敗", e)
                     return
                 }
-
-                // 2. 確認 root 存在 & signal 可呼叫
-                if (!uploadRoot) {
-                    console.log("結果接收：uploadRoot 為空，放棄導航")
-                    return
+                console.log("UploadPage: 解析後筆數 =", arr.length)
+                if (typeof uploadRoot.requestNavigate === "function") {
+                    uploadRoot.requestNavigate("result", arr)
+                } else {
+                    console.log("UploadPage: requestNavigate 不可用")
                 }
-                if (typeof uploadRoot.requestNavigate !== "function") {
-                    console.log("結果接收：requestNavigate 不是函式，型別 =",
-                                typeof uploadRoot.requestNavigate)
-                    return
-                }
-
-                console.log("結果接收成功，筆數 =", arr.length)
-                // 明確呼叫 root 的 signal
-                uploadRoot.requestNavigate("result", arr)
             })
-
             backend._uploadConnected = true
             console.log("UploadPage: 已連接 backend.resultsReady")
-        } else {
-            console.log("UploadPage: backend 不存在或已連接過")
         }
     }
 
@@ -532,12 +519,16 @@ ColumnLayout {
                             font.pixelSize: 22
                             font.bold: true
                         }
-                        MaskCheckBox { id: cbName;     text: "遮蔽 姓名";         optionKey: "name";      onToggled: updateCanGenerate() }
-                        MaskCheckBox { id: cbEmail;    text: "遮蔽 Email";        optionKey: "email";     onToggled: updateCanGenerate() }
-                        MaskCheckBox { id: cbPhone;    text: "遮蔽 電話";         optionKey: "phone";     onToggled: updateCanGenerate() }
-                        MaskCheckBox { id: cbAddr;     text: "遮蔽 地址";         optionKey: "address";   onToggled: updateCanGenerate() }
-                        MaskCheckBox { id: cbBirthday; text: "遮蔽 生日";         optionKey: "birthday";  onToggled: updateCanGenerate() }
-                        MaskCheckBox { id: cbId;       text: "遮蔽 身分證 / SSN"; optionKey: "id";        onToggled: updateCanGenerate() }
+                        Column {
+                            id: optionFlow
+                            spacing: 6
+                            MaskCheckBox { text: "遮蔽 姓名";         optionKey: "name";     onToggled: updateCanGenerate() }
+                            MaskCheckBox { text: "遮蔽 Email";        optionKey: "email";    onToggled: updateCanGenerate() }
+                            MaskCheckBox { text: "遮蔽 電話";         optionKey: "phone";    onToggled: updateCanGenerate() }
+                            MaskCheckBox { text: "遮蔽 地址";         optionKey: "address";  onToggled: updateCanGenerate() }
+                            MaskCheckBox { text: "遮蔽 生日";         optionKey: "birthday"; onToggled: updateCanGenerate() }
+                            MaskCheckBox { text: "遮蔽 身分證 / SSN"; optionKey: "id";       onToggled: updateCanGenerate() }
+                        }
                         Item { Layout.fillHeight: true }
                     }
                 }
@@ -559,11 +550,11 @@ ColumnLayout {
                     ToolTip.text: enabled ? "" : "請先選擇檔案與選項"
                     background: Rectangle {
                         radius: 6
-                        color: enabled
+                        color: generateBtn.enabled
                                ? (generateBtn.pressed ? "#4EA773"
                                   : generateBtn.hovered ? "#59B481" : "#66CC33")
                                : "#222"
-                        border.width: enabled ? 0 : 1
+                        border.width: generateBtn.enabled ? 0 : 1
                         border.color: "#444"
                     }
                     contentItem: Text {
@@ -576,31 +567,17 @@ ColumnLayout {
                     onClicked: {
                         if (!enabled) return
                         console.log("Generate clicked - 呼叫後端處理 (測試模式，僅插入文字)")
-
                         if (typeof backend !== "undefined" && backend.processFiles) {
-                            // 收集勾選的測試項目
                             var opts = []
-                            if (cbName.checked)     opts.push(cbName.optionKey)
-                            if (cbEmail.checked)    opts.push(cbEmail.optionKey)
-                            if (cbPhone.checked)    opts.push(cbPhone.optionKey)
-                            if (cbAddr.checked)     opts.push(cbAddr.optionKey)
-                            if (cbBirthday.checked) opts.push(cbBirthday.optionKey)
-                            if (cbId.checked)       opts.push(cbId.optionKey)
-
+                            if (optionFlow) {
+                                for (var i=0;i<optionFlow.children.length;i++) {
+                                    var c = optionFlow.children[i]
+                                    if (c.checked && c.optionKey) opts.push(c.optionKey)
+                                }
+                            }
+                            console.log("選取項目 =", opts.join(", "))
                             if (backend.setOptions) backend.setOptions(opts)
                             backend.processFiles()
-                        } else {
-                            // 後端尚未實作 → fallback 假資料
-                            var results = []
-                            for (var i=0; i<tagModel.count; i++) {
-                                var f = tagModel.get(i)
-                                results.push({
-                                    fileName: f.name,
-                                    originalText: "原文示例 - " + f.name,
-                                    maskedText: "[MASKED header]\n\n原文示例 - " + f.name
-                                })
-                            }
-                            requestNavigate("result", results)
                         }
                     }
                 }

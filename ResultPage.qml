@@ -13,6 +13,12 @@ ColumnLayout {
     property int currentIndex: -1
     signal requestNavigate(string target, var payload)
 
+    Component.onCompleted: {
+        console.log("ResultPage loaded. 現有 resultModel.count =", resultModel.count)
+        // 延遲檢查：避免載入競態造成未呼叫 loadResults
+        Qt.createQmlObject('import QtQuick 2.15; Timer { interval:150; running:true; repeat:false; onTriggered: { if (resultModel.count===0 && typeof Qt !== "undefined") { var win = Qt.application.activeWindow; if (win && win.pendingPayload && win.pendingPayload.length!==undefined && root.loadResults) { console.log("ResultPage: 延遲補載入 pendingPayload"); root.loadResults(win.pendingPayload); win.pendingPayload = null; win.lastResultPayload = null; } } } }', root, "LateLoadTimer")
+    }
+
     ListModel { id: resultModel }     // { fileName, originalText, maskedText, type, expanded, viewMode }
     ListModel { id: fileNameModel }   // { name }
 
@@ -76,15 +82,6 @@ ColumnLayout {
             }
         }
         Item { Layout.fillWidth: true }
-    }
-
-    // 成功訊息
-    Text {
-        Layout.alignment: Qt.AlignHCenter
-        text: "去識別化完成囉！"
-        font.pixelSize: 32
-        font.bold: true
-        color: "#66CC33"
     }
 
     // 主版面容器（自適應：寬→左右；窄→上下）
@@ -523,24 +520,6 @@ ColumnLayout {
                     }
                 }
             }
-        }
-    }
-
-    // 測試資料（外部未呼叫時）
-    Component.onCompleted: {
-        if (resultModel.count === 0) {
-            loadResults([
-                {
-                    fileName: "測試1.txt",
-                    originalText: "原文：這是第一個檔案的原始文字。\n第二行原文資料。",
-                    maskedText: "去識別後：這是第一個檔案的處理結果。\n第二行處理後資料。"
-                },
-                {
-                    fileName: "報告2.docx",
-                    originalText: "原文：很長很長的內容 AAAAA BBBBB CCCCC DDDDD EEEEE FFFFF GGGGG HHHHH IIIII JJJJJ …",
-                    maskedText: "去識別後：長內容已遮蔽 (示例) ……"
-                }
-            ])
         }
     }
 }

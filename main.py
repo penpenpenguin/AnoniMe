@@ -76,6 +76,7 @@ class Backend(QObject):
     # 主流程 ---------------------------------------------------
     @Slot()
     def processFiles(self):
+        print("Backend: processFiles() start, files =", len(self._files), "options =", self._options)
         results = []
         for path in self._files:
             file_name = os.path.basename(path)
@@ -99,6 +100,7 @@ class Backend(QObject):
                 "maskedText": masked
             })
 
+        print("Backend: emit resultsReady count =", len(results))
         self.resultsReady.emit(json.dumps(results, ensure_ascii=False))
 
     # 讀取 -----------------------------------------------------
