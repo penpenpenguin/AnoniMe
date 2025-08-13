@@ -1,3 +1,5 @@
+# 現在用不到
+
 # 專案與 venv
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $VenvDir     = Join-Path $ProjectRoot ".venv"

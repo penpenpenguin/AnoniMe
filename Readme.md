@@ -7,5 +7,5 @@ pip install PySide6 python-docx
 # 開啟專案
 python.exe .\main.py   
 
-# 從 venv 啟動設計畫面(要設計laypout再開)
+# 從 venv 啟動設計畫面(要設計layout再開)
 .venv\Scripts\pyside6-designer.exe
