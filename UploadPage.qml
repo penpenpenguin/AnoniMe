@@ -74,16 +74,41 @@ ColumnLayout {
     }
 
     Component.onCompleted: {
-        if (typeof backend !== "undefined" && backend.resultsReady && !backend._uploadConnected) {
-            backend.resultsReady.connect(function(json){
+        // 只連一次
+        if (typeof backend !== "undefined"
+                && backend.resultsReady
+                && !backend._uploadConnected) {
+
+            backend.resultsReady.connect(function(json) {
+                // 1. 解析
+                let arr = []
                 try {
-                    var arr = JSON.parse(json)
-                    requestNavigate("result", arr)
-                } catch(e) {
-                    console.log("結果解析失敗", e)
+                    arr = JSON.parse(json)
+                } catch (e) {
+                    console.log("結果解析失敗(JSON parse error):", e)
+                    return
                 }
+
+                // 2. 確認 root 存在 & signal 可呼叫
+                if (!uploadRoot) {
+                    console.log("結果接收：uploadRoot 為空，放棄導航")
+                    return
+                }
+                if (typeof uploadRoot.requestNavigate !== "function") {
+                    console.log("結果接收：requestNavigate 不是函式，型別 =",
+                                typeof uploadRoot.requestNavigate)
+                    return
+                }
+
+                console.log("結果接收成功，筆數 =", arr.length)
+                // 明確呼叫 root 的 signal
+                uploadRoot.requestNavigate("result", arr)
             })
+
             backend._uploadConnected = true
+            console.log("UploadPage: 已連接 backend.resultsReady")
+        } else {
+            console.log("UploadPage: backend 不存在或已連接過")
         }
     }
 

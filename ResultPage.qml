@@ -10,6 +10,7 @@ ColumnLayout {
     property int maxContentWidth: 1280
     property bool narrow: width < 1050
     property int sideWidth: 360
+    property int currentIndex: -1
     signal requestNavigate(string target, var payload)
 
     ListModel { id: resultModel }     // { fileName, originalText, maskedText, type, expanded, viewMode }
@@ -26,12 +27,11 @@ ColumnLayout {
                                    fileName: o.fileName || ("Result_" + (i+1)),
                                    originalText: o.originalText || o.previewText || "(無原始內容)",
                                    maskedText: o.maskedText || o.previewText || "(無去識別化內容)",
-                                   type: o.type || "text",
-                                   expanded: false,
-                                   viewMode: "masked"   // masked | original
+                                   type: o.type || "text"
                                })
             fileNameModel.append({ name: o.fileName || ("Result_" + (i+1)) })
         }
+        currentIndex = resultModel.count > 0 ? 0 : -1
         // 開頭捲到頂
         contentFlick.contentY = 0
     }
@@ -47,6 +47,14 @@ ColumnLayout {
         if (idx < 0 || idx >= cardColumn.children.length) return
         const item = cardColumn.children[idx]
         contentFlick.contentY = item.y - 8
+    }
+
+    function selectFile(idx) {
+        if (idx < 0 || idx >= resultModel.count) return
+        currentIndex = idx
+        // 捲到頂
+        if (contentFlick) contentFlick.contentY = 0
+        if (contentFlickN) contentFlickN.contentY = 0
     }
 
     // Header (Back + Title)
@@ -105,29 +113,46 @@ ColumnLayout {
                     id: contentFlick
                     clip: true
                     contentWidth: width
-                    contentHeight: cardColumn.implicitHeight
-                    interactive: true
+                    contentHeight: contentColumn.implicitHeight
                     boundsBehavior: Flickable.StopAtBounds
-                    flickDeceleration: 2500
                     ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
                     width: parent.width - sidePanel.width - wideLayout.spacing
                     anchors.top: parent.top
                     anchors.bottom: parent.bottom
 
                     Column {
-                        id: cardColumn
+                        id: contentColumn
                         width: contentFlick.width
-                        spacing: 16
+                        spacing: 20
+                        padding: 0
 
-                        // 卡片列表
-                        Repeater {
-                            model: resultModel
-                            delegate: cardDelegate
+                        Rectangle {
+                            width: parent.width
+                            radius: 10
+                            color: "#F8F8F8"
+                            border.color: "#DCDCDC"
+                            border.width: 1
+                            visible: currentIndex >= 0
+                            Column {
+                                anchors.fill: parent
+                                anchors.margins: 16
+                                spacing: 14
+                                Text {
+                                    text: currentIndex >=0 ? resultModel.get(currentIndex).fileName : ""
+                                    font.pixelSize: 20
+                                    font.bold: true
+                                    color: "#333"
+                                }
+                                Text {
+                                    text: currentIndex >=0 ? resultModel.get(currentIndex).maskedText : ""
+                                    wrapMode: Text.Wrap
+                                    font.pixelSize: 14
+                                    color: "#222"
+                                }
+                            }
                         }
-
-                        // 無資料
                         Text {
-                            visible: resultModel.count === 0
+                            visible: currentIndex < 0
                             width: parent.width
                             text: "尚無結果"
                             color: "#999"
@@ -135,7 +160,7 @@ ColumnLayout {
                             font.pixelSize: 14
                             padding: 40
                         }
-                        Item { width: 1; height: 12 }
+                        Item { width: 1; height: 20 }
                     }
                 }
 
@@ -189,10 +214,12 @@ ColumnLayout {
                                         height: 34
                                         radius: 6
                                         property int delegateIndex: index
-                                        color: hover ? "#E9F7EE" : "white"
-                                        border.color: "#D0E3D8"
-                                        border.width: 1
                                         property bool hover: false
+                                        color: delegateIndex === currentIndex
+                                               ? "#D5F2E1"
+                                               : (hover ? "#E9F7EE" : "white")
+                                        border.color: delegateIndex === currentIndex ? "#66CC33" : "#D0E3D8"
+                                        border.width: 1
                                         Row {
                                             anchors.fill: parent
                                             anchors.margins: 8
@@ -221,7 +248,7 @@ ColumnLayout {
                                                     font.pixelSize: openBtn.font.pixelSize
                                                     font.bold: true
                                                 }
-                                                onClicked: scrollTo(delegateIndex)
+                                                onClicked: selectFile(delegateIndex)
                                             }
                                         }
                                         MouseArea {
@@ -229,7 +256,7 @@ ColumnLayout {
                                             hoverEnabled: true
                                             onEntered: parent.hover = true
                                             onExited: parent.hover = false
-                                            onClicked: scrollTo(delegateIndex)
+                                            onClicked: selectFile(delegateIndex)
                                         }
                                     }
                                 }
@@ -302,22 +329,44 @@ ColumnLayout {
                     id: contentFlickN
                     clip: true
                     contentWidth: width
-                    contentHeight: cardColumnN.implicitHeight
+                    contentHeight: contentColumnN.implicitHeight
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: ScrollBar {}
                     width: parent.width
                     height: parent.height - sidePanelN.height - narrowLayout.spacing
 
                     Column {
-                        id: cardColumnN
+                        id: contentColumnN
                         width: contentFlickN.width
-                        spacing: 16
-                        Repeater {
-                            model: resultModel
-                            delegate: cardDelegate
+                        spacing: 20
+
+                        Rectangle {
+                            width: parent.width
+                            radius: 10
+                            color: "#F8F8F8"
+                            border.color: "#DCDCDC"
+                            border.width: 1
+                            visible: currentIndex >= 0
+                            Column {
+                                anchors.fill: parent
+                                anchors.margins: 16
+                                spacing: 14
+                                Text {
+                                    text: currentIndex >=0 ? resultModel.get(currentIndex).fileName : ""
+                                    font.pixelSize: 20
+                                    font.bold: true
+                                    color: "#333"
+                                }
+                                Text {
+                                    text: currentIndex >=0 ? resultModel.get(currentIndex).maskedText : ""
+                                    wrapMode: Text.Wrap
+                                    font.pixelSize: 14
+                                    color: "#222"
+                                }
+                            }
                         }
                         Text {
-                            visible: resultModel.count === 0
+                            visible: currentIndex < 0
                             width: parent.width
                             text: "尚無結果"
                             color: "#999"
@@ -325,7 +374,7 @@ ColumnLayout {
                             font.pixelSize: 14
                             padding: 40
                         }
-                        Item { width: 1; height: 8 }
+                        Item { width: 1; height: 20 }
                     }
                 }
 
@@ -375,10 +424,12 @@ ColumnLayout {
                                         height: 32
                                         radius: 6
                                         property int delegateIndex: index
-                                        color: hover ? "#E9F7EE" : "white"
-                                        border.color: "#D0E3D8"
-                                        border.width: 1
                                         property bool hover: false
+                                        color: delegateIndex === currentIndex
+                                               ? "#D5F2E1"
+                                               : (hover ? "#E9F7EE" : "white")
+                                        border.color: delegateIndex === currentIndex ? "#66CC33" : "#D0E3D8"
+                                        border.width: 1
                                         Row {
                                             anchors.fill: parent
                                             anchors.margins: 8
@@ -407,14 +458,7 @@ ColumnLayout {
                                                     font.pixelSize: openBtn.font.pixelSize
                                                     font.bold: true
                                                 }
-                                                onClicked: {
-                                                    for (let i=0;i<cardColumnN.children.length;i++) {
-                                                        if (cardColumnN.children[i].fileName === name) {
-                                                            contentFlickN.contentY = cardColumnN.children[i].y - 4
-                                                            break
-                                                        }
-                                                    }
-                                                }
+                                                onClicked: selectFile(delegateIndex)
                                             }
                                         }
                                         MouseArea {
@@ -422,6 +466,7 @@ ColumnLayout {
                                             hoverEnabled: true
                                             onEntered: parent.hover = true
                                             onExited: parent.hover = false
+                                            onClicked: selectFile(delegateIndex)
                                         }
                                     }
                                 }
@@ -475,148 +520,6 @@ ColumnLayout {
                                 onClicked: requestNavigate("home", null)
                             }
                         }
-                    }
-                }
-            }
-        }
-    }
-
-    // 卡片 Component
-    Component {
-        id: cardDelegate
-        Rectangle {
-            id: card
-            // 從 model role 綁定
-            property int    modelIndex: index
-            property string fileName: model.fileName
-            property string originalText: model.originalText
-            property string maskedText: model.maskedText
-            property string type: model.type
-            property bool   expanded: model.expanded
-            property string viewMode: model.viewMode   // masked / original
-
-            width: parent ? parent.width : 600
-            radius: 10
-            color: "#F8F8F8"
-            border.color: "#DCDCDC"
-            border.width: 1
-            property int maxCollapsedLines: 4
-            anchors.horizontalCenter: parent ? parent.horizontalCenter : undefined
-            implicitHeight: contentColumn.implicitHeight + 32
-
-            Column {
-                id: contentColumn
-                anchors {
-                    left: parent.left
-                    right: parent.right
-                    leftMargin: 16
-                    rightMargin: 16
-                    top: parent.top
-                    topMargin: 16
-                }
-                spacing: 10
-
-                Row {
-                    width: parent.width
-                    spacing: 12
-                    Text {
-                        text: card.fileName
-                        font.pixelSize: 16
-                        font.bold: true
-                        color: "#333"
-                        elide: Text.ElideRight
-                        width: parent.width - viewSwitcher.width - expandBtn.width - 24
-                    }
-                    Row {
-                        id: viewSwitcher
-                        spacing: 4
-                        property int tabW: 54
-                        Repeater {
-                            model: ["去識別後","原文"]
-                            delegate: Rectangle {
-                                width: viewSwitcher.tabW
-                                height: 26
-                                radius: 6
-                                color: (index===0 && card.viewMode==="masked") ||
-                                       (index===1 && card.viewMode==="original")
-                                       ? "#66CC33" : "#E0E0E0"
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: modelData
-                                    font.pixelSize: 11
-                                    font.bold: true
-                                    color: ((index===0 && card.viewMode==="masked") ||
-                                            (index===1 && card.viewMode==="original"))
-                                            ? "white" : "#444"
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        card.viewMode = (index===0) ? "masked" : "original"
-                                        resultModel.set(card.modelIndex, {
-                                            fileName: card.fileName,
-                                            originalText: card.originalText,
-                                            maskedText: card.maskedText,
-                                            type: card.type,
-                                            expanded: card.expanded,
-                                            viewMode: card.viewMode
-                                        })
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Button {
-                        id: expandBtn
-                        text: card.expanded ? "收合" : "展開"
-                        font.pixelSize: 12
-                        padding: 6
-                        background: Rectangle {
-                            radius: 6
-                            color: expandBtn.pressed ? "#4EA773"
-                                  : expandBtn.hovered ? "#59B481" : "#66CC33"
-                        }
-                        contentItem: Text {
-                            anchors.centerIn: parent
-                            text: expandBtn.text
-                            color: "white"
-                            font.pixelSize: 12
-                            font.bold: true
-                        }
-                        onClicked: {
-                            card.expanded = !card.expanded
-                            resultModel.set(card.modelIndex, {
-                                fileName: card.fileName,
-                                originalText: card.originalText,
-                                maskedText: card.maskedText,
-                                type: card.type,
-                                expanded: card.expanded,
-                                viewMode: card.viewMode
-                            })
-                        }
-                    }
-                }
-
-                Loader {
-                    width: parent.width
-                    sourceComponent: textViewComp
-                }
-            }
-
-            Component {
-                id: textViewComp
-                Column {
-                    spacing: 6
-                    Text {
-                        id: contentText
-                        width: parent.width
-                        text: card.viewMode === "masked" ? card.maskedText : card.originalText
-                        wrapMode: Text.Wrap
-                        font.pixelSize: 14
-                        color: "#222"
-                        elide: card.expanded ? Text.ElideNone : Text.ElideRight
-                        maximumLineCount: card.expanded ? -1 : card.maxCollapsedLines
                     }
                 }
             }
