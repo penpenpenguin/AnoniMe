@@ -1,4 +1,4 @@
-import os, sys, json, re
+import os, sys, json
 from datetime import datetime
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
@@ -10,31 +10,17 @@ try:
 except ImportError:
     Document = None
 
-# 定義每個選項的中文名稱與測試訊息
+# 勾選項目對應的顯示文字
 OPTION_META = {
-    "name":       {"label": "姓名",     "header": "[NAME] 已選：模擬姓名處理 (未真正替換)"},
-    "email":      {"label": "Email",    "header": "[EMAIL] 已選：模擬 Email 處理"},
-    "phone":      {"label": "電話",     "header": "[PHONE] 已選：模擬電話處理"},
-    "address":    {"label": "地址",     "header": "[ADDRESS] 已選：模擬地址處理"},
-    "birthday":   {"label": "生日",     "header": "[BIRTHDAY] 已選：模擬生日處理"},
-    "id":         {"label": "身分證",   "header": "[ID] 已選：模擬 ID 處理"},
-    "student_id": {"label": "學號",     "header": "[STUDENT_ID] 已選：模擬學號處理"},
-    "org":        {"label": "機構",     "header": "[ORG] 已選：模擬機構處理"}
+    "name":       {"label": "姓名",     "desc": "姓名測試行"},
+    "email":      {"label": "Email",    "desc": "Email 測試行"},
+    "phone":      {"label": "電話",     "desc": "電話測試行"},
+    "address":    {"label": "地址",     "desc": "地址測試行"},
+    "birthday":   {"label": "生日",     "desc": "生日測試行"},
+    "id":         {"label": "身分證",   "desc": "身分證測試行"},
+    "student_id": {"label": "學號",     "desc": "學號測試行"},
+    "org":        {"label": "機構",     "desc": "機構測試行"},
 }
-
-# 針對插入示例（第一次匹配才加註）
-OPTION_INLINE_PATTERNS = {
-    "email":      (re.compile(r'\b[\w\.-]+@[\w\.-]+\.\w+\b'), "[EMAIL_DEMO]"),
-    "phone":      (re.compile(r'\b\d{8,11}\b'), "[PHONE_DEMO]"),
-    "id":         (re.compile(r'\b[A-Z][0-9]{9}\b'), "[ID_DEMO]"),
-    "birthday":   (re.compile(r'\b\d{4}[/-]\d{1,2}[/-]\d{1,2}\b'), "[DATE_DEMO]"),
-    "student_id": (re.compile(r'\b[ABCD]\d{7,8}\b', re.IGNORECASE), "[STUDENT_ID_DEMO]"),
-}
-
-# 簡單中文姓名 + (先生|小姐) 示意
-OPTION_INLINE_PATTERNS["name"] = (re.compile(r'([\u4e00-\u9fff]{2,3})(先生|小姐)'), "[NAME_DEMO]")
-# 地址只抓城市名（示意）
-OPTION_INLINE_PATTERNS["address"] = (re.compile(r'(台北市|新北市|桃園市|台中市|台南市|高雄市)'), "[ADDR_DEMO]")
 
 class Backend(QObject):
     filesChanged = Signal(list)
@@ -43,9 +29,9 @@ class Backend(QObject):
     def __init__(self):
         super().__init__()
         self._files = []
-        self._options = []  # 勾選的 optionKey
+        self._options = []
 
-    # ---------- 檔案 ----------
+    # 檔案操作 -------------------------------------------------
     @Slot(str)
     def addFile(self, path: str):
         if path and os.path.isfile(path) and path not in self._files:
@@ -78,7 +64,7 @@ class Backend(QObject):
     def files(self):
         return self._files
 
-    # ---------- 遮蔽選項 (測試用：只影響 maskedText 的附加文字) ----------
+    # 選項 -----------------------------------------------------
     @Slot('QStringList')
     def setOptions(self, opts):
         self._options = [o for o in opts if o in OPTION_META]
@@ -87,7 +73,7 @@ class Backend(QObject):
     def getOptions(self):
         return self._options
 
-    # ---------- 主處理 ----------
+    # 主流程 ---------------------------------------------------
     @Slot()
     def processFiles(self):
         results = []
@@ -104,7 +90,7 @@ class Backend(QObject):
                 ftype = 'binary'
 
             original = self._read_file_preview(path, ftype)
-            masked = self._build_masked_test(original, file_name)
+            masked = self._build_test_version(original, file_name)
 
             results.append({
                 "fileName": file_name,
@@ -115,12 +101,12 @@ class Backend(QObject):
 
         self.resultsReady.emit(json.dumps(results, ensure_ascii=False))
 
-    # ---------- 檔案讀取 ----------
+    # 讀取 -----------------------------------------------------
     def _read_file_preview(self, path, ftype, max_chars=4000):
         try:
             if ftype == 'text':
                 with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                    data = f.read(max_chars+1)
+                    data = f.read(max_chars + 1)
                 if len(data) > max_chars:
                     data = data[:max_chars] + "\n...(截斷)"
                 return data or "(空白)"
@@ -147,56 +133,39 @@ class Backend(QObject):
         except Exception as e:
             return f"[讀取錯誤] {e}"
 
-    # ---------- 產生 maskedText：加測試說明 + 單次 inline 標記 ----------
-    def _build_masked_test(self, original: str, filename: str) -> str:
+    # 建立簡單測試版本（僅前置/後置說明） -----------------------
+    def _build_test_version(self, original: str, filename: str) -> str:
         if not original:
             return original
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         header = [
-            "[測試 / 去識別化模擬輸出 (僅加入文字, 原文未修改)]",
+            "[測試版本輸出]",
             f"[檔案: {filename}]",
             f"[時間: {now}]",
-            f"[原文長度: {len(original)} chars]"
+            f"[原文字元數: {len(original)}]"
         ]
         if self._options:
-            header.append("[已勾選項目] " + ", ".join(OPTION_META[o]["label"] for o in self._options))
-            header.append("--- 以下為針對選項插入的測試行 ---")
+            header.append("[已勾選項目] " + ", ".join(OPTION_META[o]['label'] for o in self._options))
+            header.append("--- 選項測試行開始 ---")
             for o in self._options:
-                header.append(OPTION_META[o]["header"])
+                meta = OPTION_META[o]
+                # 直接一行，不做任何內文搜尋 / 替換
+                header.append(f"[TEST-{o.upper()}] {meta['desc']} (未修改正文)")
+            header.append("--- 選項測試行結束 ---")
         else:
-            header.append("[未勾選任何選項]")
+            header.append("[未勾選任何項目]")
 
-        # 只對第一個匹配的每個選項插入一次 inline 標記，不真正遮蔽
-        modified_once = original
-        for o in self._options:
-            pat_tuple = OPTION_INLINE_PATTERNS.get(o)
-            if not pat_tuple:
-                continue
-            pattern, tag = pat_tuple
-            # 用 sub 只替換第一次，加上括號顯示 (DEMO)
-            def _repl(m):
-                return f"{tag}{{{m.group(0)}}}"
-            modified_once, count = pattern.subn(_repl, modified_once, count=1)
-            if count == 0:
-                # 沒找到示例位置 → 在 header 加提示
-                header.append(f"[{o} 無符合示例可插入 inline 標記]")
-        if self._options:
-            header.append("--- 選項插入示例結束 ---")
-
-        summary = [
+        footer = [
             "",
-            "---------------- TEST SUMMARY ----------------",
-            f"選項數量: {len(self._options)}",
-            "此輸出僅用於 UI 瀏覽測試；原文完整附於下方。",
-            "----------------------------------------------",
-            "",
-            "(以下為加入 inline 標記後的原文全文)"
+            "------ TEST SUMMARY ------",
+            f"選項數: {len(self._options)}",
+            "本測試版本僅在前方加入描述，正文保持原樣。",
+            "--------------------------"
         ]
+        return "\n".join(header) + "\n\n" + original + "\n\n" + "\n".join(footer)
 
-        return "\n".join(header) + "\n\n" + "\n".join(summary) + "\n" + modified_once
-
-# ---------- 啟動 ----------
+# 啟動 --------------------------------------------------------
 if __name__ == "__main__":
     QQuickStyle.setStyle("Fusion")
     app = QGuiApplication(sys.argv)
