@@ -1,0 +1,11 @@
+# 建議虛擬環境
+python -m venv .venv
+.venv\Scripts\activate
+python.exe -m pip install --upgrade pip
+pip install PySide6 python-docx
+
+# 開啟專案
+python.exe .\main.py   
+
+# 從 venv 啟動設計畫面(要設計laypout再開)
+.venv\Scripts\pyside6-designer.exe
