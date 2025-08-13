@@ -34,6 +34,15 @@ Rectangle {
             Qt.createQmlObject('import QtQuick 2.15; Timer { interval:150; running:true; repeat:false; onTriggered: { if (resultModel.count===0 && typeof Qt !== "undefined") { var win = Qt.application.activeWindow; if (win && win.pendingPayload && win.pendingPayload.length!==undefined && root.loadResults) { console.log("ResultPage: 延遲補載入 pendingPayload"); root.loadResults(win.pendingPayload); win.pendingPayload = null; win.lastResultPayload = null; } } } }', root, "LateLoadTimer")
         }
 
+    ListModel { id: resultModel }     // { fileName, originalText, maskedText, type, expanded, viewMode }
+    ListModel { id: fileNameModel }   // { name }
+
+    // 新增：全域顯示模式 (masked / original)
+    property string currentViewMode: "masked"
+
+    // 顯示資料模型
+    ListModel { id: headerModel }   // { text, kind }
+    ListModel { id: bodyModel }     // { lineNumber, text, kind }
         ListModel { id: resultModel }     // { fileName, originalText, maskedText, type, embedData }
         ListModel { id: fileNameModel }   // { name }
 
@@ -132,6 +141,11 @@ Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
 
+                    Column {
+                        id: contentColumn
+                        width: contentFlick.width
+                        spacing: 18
+                        padding: 0
                         Column {
                             id: contentColumn
                             width: contentFlick.width
