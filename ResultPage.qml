@@ -15,53 +15,135 @@ ColumnLayout {
 
     Component.onCompleted: {
         console.log("ResultPage loaded. 現有 resultModel.count =", resultModel.count)
-        // 延遲檢查：避免載入競態造成未呼叫 loadResults
-        Qt.createQmlObject('import QtQuick 2.15; Timer { interval:150; running:true; repeat:false; onTriggered: { if (resultModel.count===0 && typeof Qt !== "undefined") { var win = Qt.application.activeWindow; if (win && win.pendingPayload && win.pendingPayload.length!==undefined && root.loadResults) { console.log("ResultPage: 延遲補載入 pendingPayload"); root.loadResults(win.pendingPayload); win.pendingPayload = null; win.lastResultPayload = null; } } } }', root, "LateLoadTimer")
+        // 150ms 後再檢查一次，有需要再補載
+        Qt.createQmlObject('import QtQuick 2.15; Timer { interval:150; running:true; repeat:false; onTriggered: root._lateTryLoad() }', root, "LateLoadTimer")
+    }
+
+    function _lateTryLoad() {
+        if (resultModel.count > 0) return
+        console.log("ResultPage: 嘗試從 backend.getLastResults() 補抓")
+        if (typeof backend !== "undefined" && backend.getLastResults) {
+            try {
+                let json = backend.getLastResults()
+                if (json && json.length > 2) {
+                    let arr = JSON.parse(json)
+                    console.log("ResultPage: backend 快取筆數 =", arr.length)
+                    if (arr.length > 0)
+                        loadResults(arr)
+                }
+            } catch(e) {
+                console.log("ResultPage: 快取解析失敗", e)
+            }
+        }
     }
 
     ListModel { id: resultModel }     // { fileName, originalText, maskedText, type, expanded, viewMode }
     ListModel { id: fileNameModel }   // { name }
 
+    // 新增：全域顯示模式 (masked / original)
+    property string currentViewMode: "masked"
+
+    // 顯示資料模型
+    ListModel { id: headerModel }   // { text, kind }
+    ListModel { id: bodyModel }     // { lineNumber, text, kind }
+
     // 對外 API
     function loadResults(arr) {
         resultModel.clear()
         fileNameModel.clear()
-        if (!arr || !arr.length) return
+        if (!arr || !arr.length) {
+            console.log("ResultPage.loadResults: 空資料")
+            currentIndex = -1
+            return
+        }
         for (let i=0;i<arr.length;i++) {
             const o = arr[i]
             resultModel.append({
-                                   fileName: o.fileName || ("Result_" + (i+1)),
-                                   originalText: o.originalText || o.previewText || "(無原始內容)",
-                                   maskedText: o.maskedText || o.previewText || "(無去識別化內容)",
-                                   type: o.type || "text"
-                               })
+                fileName: o.fileName || ("Result_" + (i+1)),
+                originalText: o.originalText || o.previewText || "(無原始內容)",
+                maskedText: o.maskedText || o.previewText || "(無去識別化內容)",
+                type: o.type || "text"
+            })
             fileNameModel.append({ name: o.fileName || ("Result_" + (i+1)) })
         }
-        currentIndex = resultModel.count > 0 ? 0 : -1
-        // 開頭捲到頂
-        contentFlick.contentY = 0
-    }
-
-    function downloadAll() {
-        if (typeof backend !== "undefined" && backend.downloadAll)
-            backend.downloadAll()
-        else
-            console.log("backend.downloadAll 未實作")
-    }
-
-    function scrollTo(idx) {
-        if (idx < 0 || idx >= cardColumn.children.length) return
-        const item = cardColumn.children[idx]
-        contentFlick.contentY = item.y - 8
+        currentIndex = 0
+        if (contentFlick) contentFlick.contentY = 0
+        if (contentFlickN) contentFlickN.contentY = 0
+        console.log("ResultPage.loadResults: 成功載入 =", resultModel.count)
+        rebuildPreview()   // 新增：立即建構預覽
     }
 
     function selectFile(idx) {
         if (idx < 0 || idx >= resultModel.count) return
         currentIndex = idx
-        // 捲到頂
+        currentViewMode = "masked"   // 切換檔案時預設回測試版
         if (contentFlick) contentFlick.contentY = 0
         if (contentFlickN) contentFlickN.contentY = 0
+        rebuildPreview()
     }
+
+    function rebuildPreview() {
+        headerModel.clear()
+        bodyModel.clear()
+        if (currentIndex < 0 || currentIndex >= resultModel.count) return
+        const rec = resultModel.get(currentIndex)
+        const raw = currentViewMode === "masked" ? rec.maskedText : rec.originalText
+        if (!raw || raw.length === 0) return
+
+        const lines = raw.split(/\r?\n/)
+        // 將連續開頭為 "[" 的前段視為 header
+        let i = 0
+        for (; i < lines.length; i++) {
+            const L = lines[i]
+            if (L.startsWith("[")) {
+                let kind = "meta"
+                if (/\bTEST SUMMARY\b/.test(L)) kind = "summary"
+                else if (/\bTEST-|測試行|選項測試行|已勾選項目/.test(L)) kind = "test"
+                headerModel.append({ text: L, kind: kind })
+            } else if (L.trim() === "") {
+                // 空行仍視為 header 分隔線
+                if (headerModel.count > 0) headerModel.append({ text: "", kind: "gap" })
+            } else {
+                break
+            }
+        }
+        // Body (剩餘)
+        for (let j = i; j < lines.length; j++) {
+            const line = lines[j]
+            let kind = ""
+            if (/\[TEST-|測試|DEMO\]/i.test(line)) kind = "hl"
+            bodyModel.append({
+                lineNumber: j - i + 1,
+                text: line,
+                kind: kind
+            })
+        }
+    }
+
+    function _debugCountTitleTexts() {
+        // 簡易檢查：在 root 下遞迴找 text 等於目前檔名的 Text 元件數
+        if (currentIndex < 0) return
+        var name = resultModel.get(currentIndex).fileName
+        function walk(obj) {
+            var cnt = 0
+            if (!obj) return 0
+            if (obj.metaObject && obj.text !== undefined && obj.text === name) cnt++
+            if (obj.children) {
+                for (var i=0;i<obj.children.length;i++)
+                    cnt += walk(obj.children[i])
+            }
+            return cnt
+        }
+        var total = walk(root)
+        console.log("ResultPage Debug: 檔名 Text 數 =", total)
+    }
+
+    onCurrentIndexChanged: {
+        rebuildPreview()
+        _debugCountTitleTexts()
+    }
+
+    onCurrentViewModeChanged: rebuildPreview()
 
     // Header (Back + Title)
     RowLayout {
@@ -120,42 +202,244 @@ ColumnLayout {
                     Column {
                         id: contentColumn
                         width: contentFlick.width
-                        spacing: 20
+                        spacing: 18
                         padding: 0
 
-                        Rectangle {
-                            width: parent.width
-                            radius: 10
-                            color: "#F8F8F8"
-                            border.color: "#DCDCDC"
-                            border.width: 1
-                            visible: currentIndex >= 0
-                            Column {
-                                anchors.fill: parent
-                                anchors.margins: 16
-                                spacing: 14
-                                Text {
-                                    text: currentIndex >=0 ? resultModel.get(currentIndex).fileName : ""
-                                    font.pixelSize: 20
-                                    font.bold: true
-                                    color: "#333"
-                                }
-                                Text {
-                                    text: currentIndex >=0 ? resultModel.get(currentIndex).maskedText : ""
-                                    wrapMode: Text.Wrap
-                                    font.pixelSize: 14
-                                    color: "#222"
-                                }
-                            }
-                        }
+                        // 無選擇提示
                         Text {
                             visible: currentIndex < 0
                             width: parent.width
-                            text: "尚無結果"
+                            text: "尚無結果，請於右側選擇檔案。"
                             color: "#999"
                             horizontalAlignment: Text.AlignHCenter
-                            font.pixelSize: 14
-                            padding: 40
+                            font.pixelSize: 16
+                            padding: 60
+                        }
+
+                        // 預覽容器
+                        Rectangle {
+                            id: previewCard
+                            width: parent.width
+                            visible: currentIndex >= 0
+                            radius: 12
+                            color: "#111"          // 深底讓內容顯示像檢視器
+                            border.width: 1
+                            border.color: "#222"
+                            Column {
+                                id: previewCol
+                                anchors.fill: parent
+                                anchors.margins: 20
+                                spacing: 14
+
+                                // 檔案標題 + 版本切換
+                                Row {
+                                    id: titleRow
+                                    width: parent.width
+                                    spacing: 16
+
+                                    // 唯一的檔名 Text
+                                    Text {
+                                        id: fileTitle
+                                        text: currentIndex >= 0 ? resultModel.get(currentIndex).fileName : ""
+                                        font.pixelSize: 22
+                                        font.bold: true
+                                        color: "#66CC33"
+                                        elide: Text.ElideRight
+                                        // 防止被覆蓋用的背景除錯（完成後可移除）
+                                        // background: Rectangle { color: "#222A" }
+                                        width: parent.width - versionSwitch.width - 24
+                                    }
+
+                                    Row {
+                                        id: versionSwitch
+                                        spacing: 6
+                                        Repeater {
+                                            model: [
+                                                { label: "測試版", mode: "masked" },
+                                                { label: "原文",   mode: "original" }
+                                            ]
+                                            delegate: Rectangle {
+                                                property bool active: modelData.mode === currentViewMode
+                                                width: 68; height: 30
+                                                radius: 6
+                                                color: active ? "#66CC33" : "#2A2A2A"
+                                                border.width: active ? 0 : 1
+                                                border.color: "#444"
+                                                Text {
+                                                    anchors.centerIn: parent
+                                                    text: modelData.label
+                                                    color: active ? "white" : "#BBBBBB"
+                                                    font.pixelSize: 12
+                                                    font.bold: true
+                                                }
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    hoverEnabled: true
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: currentViewMode = modelData.mode
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 類型橫幅
+                                Rectangle {
+                                    visible: currentIndex >= 0
+                                    width: parent.width
+                                    radius: 6
+                                    color: "#1D1D1D"
+                                    border.width: 1
+                                    border.color: "#303030"
+                                    height: 40
+                                    Row {
+                                        id: typeRow
+                                        anchors.fill: parent
+                                        anchors.margins: 10
+                                        spacing: 10
+                                        property string ftype: currentIndex>=0 ? resultModel.get(currentIndex).type : ""
+                                        Rectangle {
+                                            width: 20; height: 20; radius: 4
+                                            color: typeRow.ftype==="pdf" ? "#E74C3C"
+                                                  : typeRow.ftype==="docx" ? "#2E6EE7"
+                                                  : typeRow.ftype==="text" ? "#888" : "#555"
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: typeRow.ftype.length>0 ? typeRow.ftype.toUpperCase().slice(0,3) : ""
+                                                font.pixelSize: 10
+                                                font.bold: true
+                                                color: "white"
+                                            }
+                                        }
+                                        Text {
+                                            text: {
+                                                switch (typeRow.ftype) {
+                                                case "pdf": return "PDF 預覽（文字抽取示意，不含原版面）"
+                                                case "docx": return "DOCX 預覽（段落合併示意）"
+                                                case "text": return "純文字預覽"
+                                                default: return "一般檔案預覽"
+                                                }
+                                            }
+                                            font.pixelSize: 13
+                                            color: "#CCCCCC"
+                                        }
+                                    }
+                                }
+
+                                // Header 區
+                                Rectangle {
+                                    id: headerBox
+                                    visible: headerModel.count > 0
+                                    width: parent.width
+                                    radius: 8
+                                    color: "#1E1E1E"
+                                    border.width: 1
+                                    border.color: "#2C2C2C"
+                                    Column {
+                                        anchors.fill: parent
+                                        anchors.margins: 14
+                                        spacing: 6
+                                        Repeater {
+                                            model: headerModel
+                                            delegate: Rectangle {
+                                                id: headerLine
+                                                width: parent.width
+                                                radius: 4
+                                                property string lineText: model.text
+                                                property string lineKind: model.kind
+                                                visible: lineText.length > 0
+                                                color: lineKind==="test" ? "#264d33"
+                                                      : lineKind==="summary" ? "#3a2d18"
+                                                      : lineKind==="gap" ? "transparent"
+                                                      : "#222"
+                                                border.width: (lineKind==="test"||lineKind==="summary") ? 1 : 0
+                                                border.color: lineKind==="summary" ? "#C29232"
+                                                          : lineKind==="test" ? "#3FA665" : "#444"
+                                                Text {
+                                                    anchors.left: parent.left
+                                                    anchors.leftMargin: 8
+                                                    anchors.right: parent.right
+                                                    anchors.rightMargin: 8
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: headerLine.lineText
+                                                    wrapMode: Text.Wrap
+                                                    font.pixelSize: 12
+                                                    color: lineKind==="summary" ? "#F2D28A"
+                                                          : lineKind==="test" ? "#7EE2A8" : "#BEBEBE"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 內容行 (帶行號)
+                                Rectangle {
+                                    id: bodyBox
+                                    width: parent.width
+                                    radius: 8
+                                    color: "#101010"
+                                    border.width: 1
+                                    border.color: "#222"
+                                    implicitHeight: bodyCol.implicitHeight + 16
+                                    Column {
+                                        id: bodyCol
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.margins: 8
+                                        spacing: 2
+                                        Repeater {
+                                            model: bodyModel
+                                            delegate: Row {
+                                                width: parent.width
+                                                spacing: 12
+                                                // 緩存 model 資料，避免 Text 自我引用造成 binding loop
+                                                property string lineContent: model.text
+                                                property string lineKind: model.kind
+
+                                                Rectangle {
+                                                    width: 46
+                                                    height: lineTxt.implicitHeight + 4
+                                                    radius: 4
+                                                    color: "#1F1F1F"
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: model.lineNumber
+                                                        font.pixelSize: 11
+                                                        color: "#6A6A6A"
+                                                        font.family: "Consolas"
+                                                    }
+                                                }
+                                                Rectangle {
+                                                    width: parent.width - 46 - 12
+                                                    color: lineKind==="hl" ? "#182e21" : "transparent"
+                                                    radius: lineKind==="hl" ? 4 : 0
+                                                    border.width: lineKind==="hl" ? 1 : 0
+                                                    border.color: "#2E7B4E"
+                                                    Text {
+                                                        id: lineTxt
+                                                        width: parent.width - 12
+                                                        text: lineContent.length===0 ? "\u200B" : lineContent
+                                                        font.pixelSize: 13
+                                                        wrapMode: Text.Wrap
+                                                        color: lineKind==="hl" ? "#CFEFD9" : "#CCCCCC"
+                                                        font.family: "Consolas"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        // 空 body
+                                        Text {
+                                            visible: bodyModel.count === 0
+                                            text: "(無內文)"
+                                            font.pixelSize: 13
+                                            color: "#666"
+                                            horizontalAlignment: Text.AlignHCenter
+                                            width: parent.width
+                                            padding: 40
+                                        }
+                                    }
+                                }
+                            }
                         }
                         Item { width: 1; height: 20 }
                     }

@@ -35,6 +35,11 @@ Window {
         }
     }
 
+    function hasPendingResults() {
+        return (pendingPayload && pendingPayload.length !== undefined && pendingPayload.length > 0)
+               || (lastResultPayload && lastResultPayload.length !== undefined && lastResultPayload.length > 0)
+    }
+
     Loader {
         id: pageLoader
         anchors.fill: parent

@@ -30,6 +30,7 @@ class Backend(QObject):
         super().__init__()
         self._files = []
         self._options = []
+        self._last_results = []          # 新增：快取最近一次結果
 
     # 檔案操作 -------------------------------------------------
     @Slot(str)
@@ -100,8 +101,14 @@ class Backend(QObject):
                 "maskedText": masked
             })
 
+        self._last_results = results[:]   # 快取
         print("Backend: emit resultsReady count =", len(results))
         self.resultsReady.emit(json.dumps(results, ensure_ascii=False))
+
+    @Slot(result=str)
+    def getLastResults(self):
+        """ResultPage 補抓"""
+        return json.dumps(self._last_results, ensure_ascii=False)
 
     # 讀取 -----------------------------------------------------
     def _read_file_preview(self, path, ftype, max_chars=4000):
