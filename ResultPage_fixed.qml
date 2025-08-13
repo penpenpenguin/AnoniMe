@@ -3,18 +3,9 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 Rectangle {
-    id: pageRoot
     anchors.fill: parent
     color: "#FFFFFF"  // 白色背景
-
-    // 對外暴露：讓 Main.qml 的 Loader 能直接呼叫與連線
-    signal requestNavigate(string target, var payload)
-    function loadResults(arr) {
-        // 轉呼叫內部實作
-        if (root && root.loadResults)
-            root.loadResults(arr)
-    }
-
+    
     ColumnLayout {
         id: root
         anchors.fill: parent
@@ -34,32 +25,25 @@ Rectangle {
             Qt.createQmlObject('import QtQuick 2.15; Timer { interval:150; running:true; repeat:false; onTriggered: { if (resultModel.count===0 && typeof Qt !== "undefined") { var win = Qt.application.activeWindow; if (win && win.pendingPayload && win.pendingPayload.length!==undefined && root.loadResults) { console.log("ResultPage: 延遲補載入 pendingPayload"); root.loadResults(win.pendingPayload); win.pendingPayload = null; win.lastResultPayload = null; } } } }', root, "LateLoadTimer")
         }
 
-        ListModel { id: resultModel }     // { fileName, originalText, maskedText, type, embedData }
+        ListModel { id: resultModel }     // { fileName, originalText, maskedText, type, expanded, viewMode }
         ListModel { id: fileNameModel }   // { name }
 
         // 對外 API
         function loadResults(arr) {
-            console.log("ResultPage.loadResults() called with arr.length =", arr ? arr.length : "null")
             resultModel.clear()
             fileNameModel.clear()
-            if (!arr || !arr.length) {
-                console.log("ResultPage.loadResults() - no data to load")
-                return
-            }
+            if (!arr || !arr.length) return
             for (let i=0;i<arr.length;i++) {
                 const o = arr[i]
-                console.log("ResultPage.loadResults() - processing file", i, ":", o.fileName)
                 resultModel.append({
                                        fileName: o.fileName || ("Result_" + (i+1)),
-                                       originalText: o.originalText || o.previewText || "",
-                                       maskedText: o.maskedText || o.originalText || o.previewText || "",
-                                       type: o.type || "text",
-                                       embedData: o.embedData || ({})
+                                       originalText: o.originalText || o.previewText || "(無原始內容)",
+                                       maskedText: o.maskedText || o.previewText || "(無去識別化內容)",
+                                       type: o.type || "text"
                                    })
                 fileNameModel.append({ name: o.fileName || ("Result_" + (i+1)) })
             }
             root.currentIndex = resultModel.count > 0 ? 0 : -1
-            console.log("ResultPage.loadResults() - loaded", resultModel.count, "files, currentIndex =", root.currentIndex)
             // 開頭捲到頂
             if (contentFlick) contentFlick.contentY = 0
         }
@@ -69,6 +53,12 @@ Rectangle {
                 backend.downloadAll()
             else
                 console.log("backend.downloadAll 未實作")
+        }
+
+        function scrollTo(idx) {
+            if (idx < 0 || idx >= cardColumn.children.length) return
+            const item = cardColumn.children[idx]
+            if (contentFlick) contentFlick.contentY = item.y - 8
         }
 
         function selectFile(idx) {
@@ -94,7 +84,7 @@ Rectangle {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: pageRoot.requestNavigate("home", null)
+                    onClicked: requestNavigate("home", null)
                 }
             }
             Item { Layout.fillWidth: true }
@@ -114,14 +104,14 @@ Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.margins: 0
 
-                // 寬版布局：改用 RowLayout 防止重疊
-                RowLayout {
+                // 寬版布局
+                Row {
                     id: wideLayout
                     anchors.fill: parent
                     spacing: 28
                     visible: !root.narrow
 
-                    // 左側內容區（改用 Layout 分配空間）
+                    // 左側內容區
                     Flickable {
                         id: contentFlick
                         clip: true
@@ -129,8 +119,9 @@ Rectangle {
                         contentHeight: contentColumn.implicitHeight
                         boundsBehavior: Flickable.StopAtBounds
                         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
+                        width: parent.width - sidePanel.width - wideLayout.spacing
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
 
                         Column {
                             id: contentColumn
@@ -140,8 +131,7 @@ Rectangle {
 
                             Rectangle {
                                 width: parent.width
-                                // 使用隱式高度，避免與內部元素高度互相牽制造成擠壓
-                                implicitHeight: childColumn.implicitHeight + 32
+                                height: Math.max(300, childColumn.implicitHeight + 32)
                                 radius: 10
                                 color: "#F8F8F8"
                                 border.color: "#DCDCDC"
@@ -162,26 +152,13 @@ Rectangle {
                                         width: parent.width
                                     }
                                     
-                                    // 內嵌檢視器（若有 embedData 則優先）
-                                    EmbedViewer {
-                                        id: embedViewerWide
-                                        width: parent.width
-                                        visible: root.currentIndex >= 0
-                                                 && resultModel.get(root.currentIndex).embedData
-                                                 && resultModel.get(root.currentIndex).embedData.viewType
-                                        embedData: root.currentIndex >= 0 ? resultModel.get(root.currentIndex).embedData : ({})
-                                    }
-                                    
-                                    // 文字預覽（無 embedData 時後備顯示 originalText）
                                     ScrollView {
                                         width: parent.width
-                                        // 固定高度，避免與父層高度互相扣算導致排版紊亂
-                                        height: 500
+                                        height: Math.max(200, parent.height - parent.spacing - parent.children[0].height - 32)
                                         clip: true
-                                        visible: !embedViewerWide.visible
                                         
                                         Text {
-                                            text: root.currentIndex >= 0 ? (resultModel.get(root.currentIndex).originalText || "") : "請從右側檔案清單中選擇一個檔案來查看處理結果。\n\n如果您剛完成檔案上傳，處理結果應該會自動顯示在此處。"
+                                            text: root.currentIndex >= 0 ? resultModel.get(root.currentIndex).maskedText : "請從右側檔案清單中選擇一個檔案來查看處理結果。\n\n如果您剛完成檔案上傳，處理結果應該會自動顯示在此處。"
                                             wrapMode: Text.Wrap
                                             font.pixelSize: 14
                                             color: "#222"
@@ -194,11 +171,12 @@ Rectangle {
                         }
                     }
 
-                    // 右側側欄（改用 Layout.preferredWidth，避免與左側重疊）
+                    // 右側側欄
                     Rectangle {
                         id: sidePanel
-                        Layout.preferredWidth: root.sideWidth
-                        Layout.fillHeight: true
+                        width: root.sideWidth
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
                         radius: 10
                         color: "#F8F8F8"
                         border.color: "#D6D6D6"
@@ -277,7 +255,7 @@ Rectangle {
                                                         font.pixelSize: openBtn.font.pixelSize
                                                         font.bold: true
                                                     }
-                                                    onClicked: root.selectFile(delegateIndex)
+                                                    onClicked: selectFile(delegateIndex)
                                                 }
                                             }
                                             MouseArea {
@@ -285,7 +263,7 @@ Rectangle {
                                                 hoverEnabled: true
                                                 onEntered: parent.hover = true
                                                 onExited: parent.hover = false
-                                                onClicked: root.selectFile(delegateIndex)
+                                                onClicked: selectFile(delegateIndex)
                                             }
                                         }
                                     }
@@ -295,7 +273,11 @@ Rectangle {
                             // 底部按鈕列
                             RowLayout {
                                 id: footerRow
-                                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                                anchors {
+                                    left: parent.left
+                                    right: parent.right
+                                    bottom: parent.bottom
+                                }
                                 spacing: 10
                                 Button {
                                     id: downloadBtn
@@ -324,9 +306,19 @@ Rectangle {
                                     Layout.fillWidth: true   // 讓它取得另一半寬度
                                     text: "返回首頁"
                                     height: 40
-                                    background: Rectangle { radius: 6; color: homeBtn.pressed ? "#4EA773" : homeBtn.hovered ? "#59B481" : "#66CC33" }
-                                    contentItem: Text { anchors.centerIn: parent; text: homeBtn.text; color: "white"; font.bold: true; font.pixelSize: 14 }
-                                    onClicked: pageRoot.requestNavigate("home", null)
+                                    background: Rectangle {
+                                        radius: 6
+                                        color: homeBtn.pressed ? "#4EA773"
+                                              : homeBtn.hovered ? "#59B481" : "#66CC33"
+                                    }
+                                    contentItem: Text {
+                                        anchors.centerIn: parent
+                                        text: homeBtn.text
+                                        color: "white"
+                                        font.bold: true
+                                        font.pixelSize: 14
+                                    }
+                                    onClicked: root.requestNavigate("home", null)
                                 }
                             }
                         }
@@ -357,7 +349,7 @@ Rectangle {
 
                             Rectangle {
                                 width: parent.width
-                                implicitHeight: childColumnN.implicitHeight + 32
+                                height: Math.max(250, childColumnN.implicitHeight + 32)
                                 radius: 10
                                 color: "#F8F8F8"
                                 border.color: "#DCDCDC"
@@ -378,25 +370,13 @@ Rectangle {
                                         width: parent.width
                                     }
                                     
-                                    // 內嵌檢視器（若有 embedData 則優先）
-                                    EmbedViewer {
-                                        id: embedViewerNarrow
-                                        width: parent.width
-                                        visible: root.currentIndex >= 0
-                                                 && resultModel.get(root.currentIndex).embedData
-                                                 && resultModel.get(root.currentIndex).embedData.viewType
-                                        embedData: root.currentIndex >= 0 ? resultModel.get(root.currentIndex).embedData : ({})
-                                    }
-                                    
-                                    // 文字預覽（無 embedData 時後備顯示 originalText）
                                     ScrollView {
                                         width: parent.width
-                                        height: 350
+                                        height: Math.max(150, parent.height - parent.spacing - parent.children[0].height - 32)
                                         clip: true
-                                        visible: !embedViewerNarrow.visible
                                         
                                         Text {
-                                            text: root.currentIndex >= 0 ? (resultModel.get(root.currentIndex).originalText || "") : "請從下方檔案清單中選擇一個檔案來查看處理結果。\n\n如果您剛完成檔案上傳，處理結果應該會自動顯示在此處。"
+                                            text: root.currentIndex >= 0 ? resultModel.get(root.currentIndex).maskedText : "請從下方檔案清單中選擇一個檔案來查看處理結果。\n\n如果您剛完成檔案上傳，處理結果應該會自動顯示在此處。"
                                             wrapMode: Text.Wrap
                                             font.pixelSize: 14
                                             color: "#222"
@@ -489,7 +469,7 @@ Rectangle {
                                                         font.pixelSize: openBtn.font.pixelSize
                                                         font.bold: true
                                                     }
-                                                    onClicked: root.selectFile(delegateIndex)
+                                                    onClicked: selectFile(delegateIndex)
                                                 }
                                             }
                                             MouseArea {
@@ -497,7 +477,7 @@ Rectangle {
                                                 hoverEnabled: true
                                                 onEntered: parent.hover = true
                                                 onExited: parent.hover = false
-                                                onClicked: root.selectFile(delegateIndex)
+                                                onClicked: selectFile(delegateIndex)
                                             }
                                         }
                                     }
@@ -506,7 +486,11 @@ Rectangle {
 
                             RowLayout {
                                 id: footerRowN
-                                anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
+                                anchors {
+                                    left: parent.left
+                                    right: parent.right
+                                    bottom: parent.bottom
+                                }
                                 spacing: 10
                                 Button {
                                     id: downloadBtnN
@@ -532,9 +516,19 @@ Rectangle {
                                     Layout.fillWidth: true
                                     text: "返回首頁"
                                     height: 40
-                                    background: Rectangle { radius: 6; color: homeBtnN.pressed ? "#4EA773" : homeBtnN.hovered ? "#59B481" : "#66CC33" }
-                                    contentItem: Text { anchors.centerIn: parent; text: homeBtnN.text; color: "white"; font.bold: true; font.pixelSize: 14 }
-                                    onClicked: pageRoot.requestNavigate("home", null)
+                                    background: Rectangle {
+                                        radius: 6
+                                        color: homeBtnN.pressed ? "#4EA773"
+                                              : homeBtnN.hovered ? "#59B481" : "#66CC33"
+                                    }
+                                    contentItem: Text {
+                                        anchors.centerIn: parent
+                                        text: homeBtnN.text
+                                        color: "white"
+                                        font.bold: true
+                                        font.pixelSize: 14
+                                    }
+                                    onClicked: root.requestNavigate("home", null)
                                 }
                             }
                         }
