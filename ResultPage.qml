@@ -62,28 +62,6 @@ Rectangle {
             if (contentFlick) contentFlick.contentY = 0
             if (contentFlickN) contentFlickN.contentY = 0
         }
-
-        // Header (Back + Title)
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 20
-            Text {
-                text: "← Back"
-                font.pixelSize: 16
-                font.bold: true
-                color: backMouse.pressed ? "#2F7A47"
-                      : backMouse.containsMouse ? "#66CC33" : "#DDDDDD"
-                MouseArea {
-                    id: backMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: pageRoot.requestNavigate("home", null)  // 呼叫頂層
-                }
-            }
-            Item { Layout.fillWidth: true }
-        }
-
         // 主版面容器
         Item {
             Layout.fillWidth: true
@@ -229,13 +207,7 @@ Rectangle {
                                                     color: "#333"
                                                     elide: Text.ElideRight
                                                     verticalAlignment: Text.AlignVCenter
-                                                    width: parent.width - viewBtn.width - 16
-                                                }
-                                                Button {
-                                                    id: viewBtn
-                                                    text: "查看"
-                                                    padding: 6
-                                                    onClicked: root.selectFile(index)
+                                                    width: parent.width
                                                 }
                                             }
                                             MouseArea { anchors.fill: parent; onClicked: root.selectFile(index) }
