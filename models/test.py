@@ -1,3 +1,4 @@
+import os
 import requests
 import textwrap
 
@@ -33,7 +34,7 @@ RULES:
 7.身分證號符合台灣格式（英文+9位數字）
 8.生成的假資料要確保格式與原資料一致（字數、格式、分隔符號相同）
 9.請直接回傳替換後的 內容，不要多餘解說。 
-                                                """)
+""")
 
 # 3. 建立上下文
 def build_context():
@@ -43,14 +44,42 @@ def build_context():
 
 context = build_context()
 
-# 4. 呼叫本地模型
-resp = requests.post(
-    "http://localhost:11434/api/chat",
-    json={
-        "model": "llama3.2:latest",
-        "messages": [
-            {"role": "system", "content": "你是一個資料去識別化專家"},
-            {"role": "user", "content": f"""請依照以下 CONTEXT 生成假資料。
+def call_aihub(messages):
+    endpoint = os.getenv("AIHUB_ENDPOINT", "https://app.aihub.qualcomm.com").rstrip("/")
+    path = os.getenv("AIHUB_CHAT_PATH", "/api/v1/chat/completions")
+    model = os.getenv("AIHUB_MODEL", "llama-v3.1-8b-instruct")
+    api_key = os.environ["AIHUB_API_KEY"]
+    auth = os.getenv("AIHUB_AUTH", "bearer").lower()
+    headers = {"Content-Type": "application/json"}
+    if auth == "x-api-key":
+        headers["x-api-key"] = api_key
+    else:
+        headers["Authorization"] = f"Bearer {api_key}"
+    r = requests.post(f"{endpoint}{path}",
+                      json={"model": model, "messages": messages, "stream": False},
+                      headers=headers, timeout=120)
+    r.raise_for_status()
+    data = r.json()
+    # 兼容 OpenAI 風格與常見變體
+    try:
+        return data["choices"][0]["message"]["content"]
+    except Exception:
+        if "message" in data and "content" in data["message"]:
+            return data["message"]["content"]
+        if "text" in data:
+            return data["text"]
+        raise RuntimeError(f"Unexpected response: {data}")
+
+def call_ollama(messages):
+    r = requests.post("http://localhost:11434/api/chat",
+                      json={"model": "llama3.2:latest", "messages": messages, "stream": False},
+                      timeout=120)
+    r.raise_for_status()
+    return r.json()["message"]["content"]
+
+messages = [
+    {"role": "system", "content": "你是一個資料去識別化專家"},
+    {"role": "user", "content": f"""請依照以下 CONTEXT 生成假資料。
 
 CONTEXT:
 {context}
@@ -58,12 +87,11 @@ CONTEXT:
 TASK:
 將下列資料替換成假資料，並符合以上所有規則：
 {INPUT_RECORD}
-"""}],
-        "stream": False
-    },
-    timeout=600
-)
+"""},
+]
 
-data = resp.json()
+provider = os.getenv("PROVIDER", "ollama").lower()
+out = call_aihub(messages) if provider == "qualcomm" else call_ollama(messages)
+
 print("輸入：", INPUT_RECORD)
-print("輸出：", data["message"]["content"])
+print("輸出：", out)

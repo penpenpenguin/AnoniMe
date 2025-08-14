@@ -113,34 +113,6 @@ Item {
                 border.color: "#B0C4DE"
                 border.width: 1
                 radius: 6
-                
-                ColumnLayout {
-                    id: metaLayout
-                    anchors.fill: parent
-                    anchors.margins: 10
-                    spacing: 5
-                    
-                    Text {
-                        text: "PDF 文件 - " + (embedData.pageCount || 0) + " 頁"
-                        font.bold: true
-                        font.pixelSize: 14
-                        color: "#2F4F4F"
-                    }
-                    
-                    // 以 visible 控制顯示，避免使用不被允許的 if 區塊
-                    Text {
-                        visible: embedData && embedData.metadata && embedData.metadata.title
-                        text: "標題: " + (embedData.metadata ? (embedData.metadata.title || "") : "")
-                        font.pixelSize: 12
-                        color: "#555"
-                    }
-                    Text {
-                        visible: embedData && embedData.metadata && embedData.metadata.author
-                        text: "作者: " + (embedData.metadata ? (embedData.metadata.author || "") : "")
-                        font.pixelSize: 12
-                        color: "#555"
-                    }
-                }
             }
             
             // 頁面圖像
@@ -205,31 +177,7 @@ Item {
                 id: docxColumn
                 width: parent.width
                 spacing: 15
-                
-                // 文件資訊
-                Rectangle {
-                    width: parent.width
-                    height: docxInfo.height + 20
-                    color: "#F0FFF0"
-                    border.color: "#90EE90"
-                    border.width: 1
-                    radius: 6
-                    
-                    Column {
-                        id: docxInfo
-                        anchors.fill: parent
-                        anchors.margins: 10
-                        spacing: 5
-                        
-                        Text {
-                            text: "Word 文件 - " + (embedData.paraCount || 0) + " 段落, " + (embedData.tableCount || 0) + " 表格"
-                            font.bold: true
-                            font.pixelSize: 14
-                            color: "#006400"
-                        }
-                    }
-                }
-                
+                                
                 // 段落：移除外框，避免一段一框造成橫線堆疊視覺
                 Column {
                     width: parent.width
@@ -333,29 +281,6 @@ Item {
                 width: parent.width
                 spacing: 10
                 
-                Rectangle {
-                    width: parent.width
-                    height: docInfo.height + 20
-                    color: "#FFF8DC"
-                    border.color: "#F0E68C"
-                    border.width: 1
-                    radius: 6
-                    
-                    Column {
-                        id: docInfo
-                        anchors.fill: parent
-                        anchors.margins: 10
-                        spacing: 5
-                        
-                        Text {
-                            text: "Word 97-2003 文件 - " + (embedData.pageCount || 0) + " 頁, " + (embedData.wordCount || 0) + " 字"
-                            font.bold: true
-                            font.pixelSize: 14
-                            color: "#B8860B"
-                        }
-                    }
-                }
-                
                 TextArea {
                     id: docText
                     width: parent.width
@@ -389,28 +314,6 @@ Item {
                 width: parent.width
                 spacing: 10
                 
-                Rectangle {
-                    width: parent.width
-                    height: hexInfo.height + 20
-                    color: "#F5F5DC"
-                    border.color: "#DEB887"
-                    border.width: 1
-                    radius: 6
-                    
-                    Column {
-                        id: hexInfo
-                        anchors.fill: parent
-                        anchors.margins: 10
-                        spacing: 5
-                        
-                        Text {
-                            text: "二進位檔案 - " + (embedData.totalBytes || 0) + " bytes" + ((embedData && embedData.isPartial) ? " (部分顯示)" : "")
-                            font.bold: true
-                            font.pixelSize: 14
-                            color: "#8B4513"
-                        }
-                    }
-                }
                 
                 Rectangle {
                     width: parent.width

@@ -120,16 +120,6 @@ Rectangle {
                             width: contentFlick.width
                             spacing: 20
 
-                            // 單一檔名（避免重疊）
-                            Text {
-                                id: fileTitle
-                                text: root.currentIndex >= 0 ? resultModel.get(root.currentIndex).fileName : ""
-                                font.pixelSize: 22
-                                font.bold: true
-                                color: "#66CC33"
-                                elide: Text.ElideRight
-                            }
-
                             // 內嵌預覽（使用 EmbedViewer）
                             Rectangle {
                                 width: parent.width
