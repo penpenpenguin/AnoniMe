@@ -29,7 +29,15 @@ ColumnLayout {
     }
 
     function updateCanGenerate() {
-        canGenerate = tagModel.count > 0
+        var hasFile = tagModel.count > 0
+        var hasOption = false
+        if (optionFlow) {
+            for (var i = 0; i < optionFlow.children.length; ++i) {
+                var c = optionFlow.children[i]
+                if (c.checked) { hasOption = true; break }
+            }
+        }
+        canGenerate = hasFile && hasOption && !uploading
     }
 
     function removeFile(idx) {
@@ -53,6 +61,7 @@ ColumnLayout {
         statusOverlay.visible = true
         statusOverlay.updateOverlayPos()
         console.log("beginUpload total =", total)
+        updateCanGenerate()   // 新增：上傳中不可按
     }
 
     function fileUploadedOne() {
@@ -64,13 +73,14 @@ ColumnLayout {
             uploading = false
             currentStatus = "上傳完成"
             progressFadeDelay.start()
+            updateCanGenerate()  // 新增：上傳完成後重算
         }
     }
 
     function hideProgress() {
         statusOverlay.visible = false
         currentStatus = ""
-        // 保留數值不清除，可視需求重設
+        updateCanGenerate()  // 新增：保險
     }
 
     Component.onCompleted: {
@@ -78,24 +88,28 @@ ColumnLayout {
                 && backend.resultsReady
                 && !backend._uploadConnected) {
 
-            backend.resultsReady.connect(function(json) {
-                console.log("UploadPage: resultsReady 收到 JSON 長度 =", json.length)
-                let arr
-                try {
-                    arr = JSON.parse(json)
-                } catch(e) {
-                    console.log("UploadPage: JSON 解析失敗", e)
-                    return
-                }
-                console.log("UploadPage: 解析後筆數 =", arr.length)
-                if (typeof uploadRoot.requestNavigate === "function") {
-                    uploadRoot.requestNavigate("result", arr)
-                } else {
-                    console.log("UploadPage: requestNavigate 不可用")
-                }
-            })
             backend._uploadConnected = true
             console.log("UploadPage: 已連接 backend.resultsReady")
+        }
+    }
+
+    // 取代手動 connect：物件銷毀時自動解除連線
+    Connections {
+        target: typeof backend !== "undefined" ? backend : null
+        function onResultsReady(json) {
+            console.log("UploadPage: resultsReady 收到 JSON 長度 =", json.length)
+            var arr = []
+            try { arr = JSON.parse(json) } catch (e) {
+                console.log("UploadPage: JSON 解析失敗", e)
+                return
+            }
+            console.log("UploadPage: 解析後筆數 =", arr.length)
+            // 安全呼叫導航（避免 null）
+            if (uploadRoot && uploadRoot.requestNavigate) {
+                uploadRoot.requestNavigate("result", arr)
+            } else {
+                console.log("UploadPage: requestNavigate 不可用（頁面尚未就緒或已切換）")
+            }
         }
     }
 
