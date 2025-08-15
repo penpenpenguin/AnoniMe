@@ -224,8 +224,7 @@ python scripts/minimal_text_demo.py --mode file
 ├─ file_handlers/                  # 各格式處理器
 │  ├─ txt_handler.py               # 純文字偵測→替換→輸出
 │  ├─ docx_handler.py              # 遍歷 runs、表格 cells 偵測→替換→輸出 DOCX
-│  ├─ pdf_handler.py               # 逐 span 偵測→替換→輸出 PDF
-│  └─ pdf_handler_1.py             #（變體）使用 faker mapping 替換
+│  └─ pdf_handler.py               #（變體）使用 faker mapping 替換
 │
 ├─ pii_models/                     # PII 偵測
 │  ├─ presidio_detector.py         # Presidio AnalyzerEngine（spacy 多語）+ detect_pii()
@@ -236,10 +235,6 @@ python scripts/minimal_text_demo.py --mode file
 ├─ faker_models/                   # 假資料替換
 │  ├─ presidio_replacer.py         # Presidio Anonymizer + Faker（以 entity type 決定替換策略）
 │  └─ tony_faker.py                # 依偵測結果產生對應假值、取最高分、映射替換
-├─ scripts/                        # 單檔測試腳本
-│  ├─ run_txt_file.py
-│  ├─ run_docx_file.py
-│  └─ run_pdf_file.py
 │
 └─ test_output/                    # 處理結果與預覽
   ├─ *_deid.(txt|docx|pdf)
@@ -254,16 +249,11 @@ python scripts/minimal_text_demo.py --mode file
 
 ```powershell
 python -m venv .venv
-2) 啟動（建議先用測試後端，預覽最穩定）
+
+2) 正式後端（若你的環境有 Word 或 LibreOffice，可用較貼近正式流程的轉檔）
 
 ```powershell
-# 使用測試後端：統一將結果轉成 PDF + 頁圖回傳到前端
 python run_with_test_backend.py
-3) 正式後端（若你的環境有 Word 或 LibreOffice，可用較貼近正式流程的轉檔）
-
-<<<<<<< HEAD
-```powershell
-python main.py
 - DOCX→PDF 預覽策略：
   - Windows + Word（pywin32 COM）優先；
   - 失敗則嘗試 LibreOffice（將 `soffice.exe` 加入 PATH 或以環境變數 `SOFFICE_PATH` 指定）。
@@ -431,7 +421,7 @@ for ent in entities:
 - TXT 直接提供內容預覽（行號/語法色底）。
 
 ## 常見問題（FAQ）
-
+- 如有特殊字型，偵測結果可能失真。
 - spacy 模型下載錯誤？請確認網路或改用離線安裝，確保 `en_core_web_sm`、`zh_core_web_sm` 可用。
 - PDF handler 出現字型路徑錯誤？將硬編碼字型改為本機可用檔案，或簡化為標準字型名 `helv`/`times`。
 - DOCX→PDF 轉檔失敗？
@@ -441,35 +431,3 @@ for ent in entities:
 ## 授權
 
 此專案包含第三方套件（Presidio、spaCy、PyMuPDF、Faker 等），其授權條款請依原專案為準。
-
-# EdgeDeID Studio
-
-EdgeDeID Studio is a real-time, on-device personal data anonymization toolkit that detects and redacts sensitive information (PII) from PDF documents, images, and tabular data within **150 ms**.
-
-## ✨ Features
-
-- 🔍 **NER + OCR PII Detection**: Identifies names, emails, addresses, ID numbers, and more.
-- 🧠 **Generative AI Augmentation**: Replace redacted info with synthetic names, or generate summaries.
-- 📄 **Document Support**: Works with PDF, image, and CSV/Excel files.
-- ⚡ **Edge-Optimized**: Quantized ONNX models run on Qualcomm Copilot+ NPU with <150ms latency.
-- 🛡️ **Privacy-First**: Everything runs locally. No data leaves the device.
-
-## 🧰 Tech Stack
-
-- **NER model**: `ckiplab/bert-base-chinese-ner`
-- **Fake data generation**: `uer/gpt2-chinese-cluecorpussmall`
-- **PDF/Image parsing**: `PyMuPDF`, `Pillow`, `pandas`
-- **ONNX Inference**: `onnx`, `onnxruntime`, `onnxsim`
-- **UI**: PySide6 (for graphical interface)
-
-## 🗂️ Project Structure
-
-## PII Models
-"""
-```
-
-### 🧰 [predidio](https://github.com/microsoft/presidio)
-#### [Demo](https://huggingface.co/spaces/presidio/presidio_demo)
-
-- Data Protection and De-identification SDK
-- 效果佳
