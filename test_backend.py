@@ -1,10 +1,30 @@
 import os
 import json
+import shutil
 from datetime import datetime
 import tempfile
 from pathlib import Path
+import sys  # 新增：供平台判斷
+import subprocess  # 新增：啟動外部處理腳本
+from urllib.parse import urlparse, unquote  # 新增：解析 file:// URL
+import re  # 新增：解析 stdout 中的路徑
 
 from PySide6.QtCore import QObject, Signal, Slot
+
+try:
+    from file_handlers.txt_handler import TextHandler
+except ImportError:
+    print("警告：無法導入 TextHandler")
+
+try:
+    from file_handlers.docx_handler import DocxHandler
+except ImportError:
+    print("警告：無法導入 DocxHandler")
+
+try:
+    from file_handlers.pdf_handler_1 import PdfHandler
+except ImportError:
+    print("警告：無法導入 PdfHandler")
 
 try:
     from docx import Document  # for .docx
@@ -41,6 +61,76 @@ OPTION_META = {
     "org":        {"label": "機構",     "desc": "機構測試行"},
 }
 
+APP_ROOT = Path(__file__).resolve().parent
+APP_OUTPUT_DIR = APP_ROOT / "test_output"
+APP_PREVIEW_DIR = APP_OUTPUT_DIR / "_previews"
+APP_OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
+APP_PREVIEW_DIR.mkdir(exist_ok=True, parents=True)
+
+def _text_to_pdf_no_font(src_txt_path: str, out_pdf_path: str) -> str:
+    print("[PREVIEW] TXT->PDF via helv only:", src_txt_path)
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)  # A4
+    rect = fitz.Rect(36, 36, 559, 806)
+    with open(src_txt_path, "r", encoding="utf-8", errors="ignore") as f:
+        text = f.read()
+    # 關鍵：絕不傳 fontfile，只用 fontname="helv"
+    page.insert_textbox(rect, text, fontname="helv", fontsize=11, color=(0, 0, 0))
+    doc.save(out_pdf_path)
+    return out_pdf_path
+
+def _docx_to_pdf_no_font(src_docx_path: str, out_pdf_path: str) -> str:
+    print("[PREVIEW] DOCX->PDF try docx2pdf, fallback to helv:", src_docx_path)
+    try:
+        from docx2pdf import convert  # 可選
+        convert(src_docx_path, out_pdf_path)
+        return out_pdf_path
+    except Exception:
+        try:
+            from docx import Document
+            tmp_txt = APP_PREVIEW_DIR / (Path(src_docx_path).stem + "_plain.txt")
+            with open(tmp_txt, "w", encoding="utf-8") as wf:
+                doc = Document(src_docx_path)
+                for p in doc.paragraphs:
+                    wf.write(p.text + "\n")
+                for t in doc.tables:
+                    for row in t.rows:
+                        wf.write(" | ".join(c.text for c in row.cells) + "\n")
+            return _text_to_pdf_no_font(str(tmp_txt), out_pdf_path)
+        except Exception as e:
+            print("[PREVIEW] DOCX extract failed:", e)
+            doc = fitz.open(); doc.new_page(); doc.save(out_pdf_path); return out_pdf_path
+
+def _ensure_pdf_for_preview(processed_path: str) -> str:
+    p = Path(processed_path)
+    print("[PREVIEW] ensure PDF for:", processed_path)
+    if p.suffix.lower() == ".pdf":
+        return str(p)
+    preview_pdf = APP_PREVIEW_DIR / f"{p.stem}_preview.pdf"
+    preview_pdf.parent.mkdir(parents=True, exist_ok=True)
+    if p.suffix.lower() == ".docx":
+        return _docx_to_pdf_no_font(str(p), str(preview_pdf))
+    else:
+        return _text_to_pdf_no_font(str(p), str(preview_pdf))
+
+def _rasterize_pdf(pdf_path: str, limit_pages: int = 10, dpi: int = 144):
+    print("[PREVIEW] rasterize:", pdf_path)
+    urls = []
+    out_dir = APP_PREVIEW_DIR / (Path(pdf_path).stem + "_pages")
+    shutil.rmtree(out_dir, ignore_errors=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with fitz.open(pdf_path) as doc:
+        zoom = dpi / 72.0
+        mat = fitz.Matrix(zoom, zoom)
+        for i, page in enumerate(doc):
+            if i >= limit_pages:
+                break
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+            img = out_dir / f"page_{i+1:03d}.png"
+            pix.save(img.as_posix())
+            urls.append(img.as_uri())
+    return urls
+
 
 class TestBackend(QObject):
     """測試後端：接受 QML 上傳的檔案並回傳可顯示的預覽文字。
@@ -56,6 +146,7 @@ class TestBackend(QObject):
         super().__init__()
         self._files: list[str] = []
         self._options: list[str] = []
+        self._last_results = []          # 新增：快取最近一次結果
 
     # 檔案操作 -------------------------------------------------
     @Slot(str)
@@ -99,53 +190,59 @@ class TestBackend(QObject):
     def getOptions(self):
         return self._options
 
+    @Slot(result=str)
+    def getLastResults(self):
+        """ResultPage 補抓"""
+        return json.dumps(self._last_results, ensure_ascii=False)
+
     # 主流程 ---------------------------------------------------
     @Slot()
     def processFiles(self):
-        print("TestBackend: processFiles() start, files =", len(self._files), "options =", self._options)
+        """
+        僅改『預覽』：先讓 Backend 產生去識別後檔案，再統一轉 PDF（不依賴外部字型），
+        最後轉頁圖回傳給前端。核心處理流程不變。
+        """
+        from main import Backend
+        backend = Backend()
+        backend._options = self._options
+
         results = []
-        for path in self._files:
-            file_name = os.path.basename(path)
-            ext = file_name.lower().rsplit('.', 1)[-1] if '.' in file_name else ''
-            if ext in ('txt', 'md', 'log'):
-                ftype = 'text'
-            elif ext == 'docx':
-                ftype = 'docx'
-            elif ext == 'doc':
-                ftype = 'doc'
-            elif ext == 'pdf':
-                ftype = 'pdf'
-            else:
-                ftype = 'binary'
+        for src in self._files:
+            name = os.path.basename(src)
+            if name.startswith("~$"):  # 跳過 Word 鎖定暫存檔
+                continue
+            ext = Path(src).suffix.lower()
+            ftype = "pdf" if ext == ".pdf" else "docx" if ext == ".docx" else "text"
 
-            original = self._read_file_preview(path, ftype)
-            masked = self._build_test_version(original, file_name)
+            try:
+                out_path, _ = backend._process_file_with_deidentification(src, ftype, str(APP_OUTPUT_DIR))
+                if not out_path or not os.path.isfile(out_path):
+                    raise RuntimeError(f"後端未回傳有效輸出檔：{out_path}")
 
-            extra = {}
-            # 提供原檔 fileUrl，方便外部開啟
-            extra['fileUrl'] = self._to_file_url(path)
-            # 影像型 PDF：補回多頁影像預覽
-            if ftype == 'pdf':
-                text_len = len(original.strip()) if isinstance(original, str) else 0
-                # 若是錯誤訊息或文字極少，嘗試渲染圖片預覽
-                if text_len < 30 or original.startswith('['):
-                    imgs = self._render_pdf_pages(path, max_pages=10, zoom=1.6)
-                    if imgs:
-                        extra['pageImageUrls'] = imgs
+                pdf_path = _ensure_pdf_for_preview(out_path)   # 不用任何字型檔
+                page_urls = _rasterize_pdf(pdf_path)
 
-            # 新增內嵌檢視資料
-            embed_data = self._create_embed_data(path, ftype)
-            
-            results.append({
-                "fileName": file_name,
-                "type": ftype,
-                "originalText": original,
-                "maskedText": masked,
-                "embedData": embed_data,
-                **extra,
-            })
+                results.append({
+                    "fileName": os.path.basename(out_path),
+                    "type": "pdf",
+                    "originalText": "",
+                    "maskedText": "",
+                    "embedData": {
+                        "viewType": "pdf",
+                        "pageImages": page_urls,
+                        "fileName": os.path.basename(out_path),
+                        "pdfPath": Path(pdf_path).as_uri(),
+                        "pageCount": len(page_urls),
+                    },
+                    "fileUrl": Path(out_path).as_uri(),
+                })
+            except Exception as e:
+                results.append({
+                    "fileName": name, "type": ftype,
+                    "originalText": "", "maskedText": "",
+                    "embedData": {"viewType": "error", "error": str(e)},
+                })
 
-        print("TestBackend: emit resultsReady count =", len(results))
         self.resultsReady.emit(json.dumps(results, ensure_ascii=False))
 
     # 讀取 -----------------------------------------------------
@@ -255,156 +352,6 @@ class TestBackend(QObject):
             return []
 
     # 建立簡單測試版本（僅前置/後置說明） -----------------------
-    def _build_test_version(self, original: str, filename: str) -> str:
-        if not original:
-            return original
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        header = [
-            "[測試版本輸出]",
-            f"[檔案: {filename}]",
-            f"[時間: {now}]",
-            f"[原文字元數: {len(original)}]",
-        ]
-        if self._options:
-            header.append("[已勾選項目] " + ", ".join(OPTION_META[o]['label'] for o in self._options))
-            header.append("--- 選項測試行開始 ---")
-            for o in self._options:
-                meta = OPTION_META[o]
-                header.append(f"[TEST-{o.upper()}] {meta['desc']} (未修改正文)")
-            header.append("--- 選項測試行結束 ---")
-        else:
-            header.append("[未勾選任何項目]")
-
-        footer = [
-            "",
-            "------ TEST SUMMARY ------",
-            f"選項數: {len(self._options)}",
-            "本測試版本僅在前方加入描述，正文保持原樣。",
-            "--------------------------",
-        ]
-        return "\n".join(header) + "\n\n" + original + "\n\n" + "\n".join(footer)
-
-    def _create_embed_data(self, path: str, ftype: str) -> dict:
-        """創建內嵌檔案檢視資料，支援多種檔案類型的內嵌顯示。"""
-        try:
-            base_data = {
-                "type": ftype,
-                "fileName": os.path.basename(path),
-                "fileSize": os.path.getsize(path),
-                "lastModified": datetime.fromtimestamp(os.path.getmtime(path)).strftime("%Y-%m-%d %H:%M:%S")
-            }
-
-            if ftype == 'text':
-                # 文字檔：完整內容 + 語法高亮提示
-                with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                    content = f.read()
-                ext = os.path.splitext(path)[1].lower()
-                syntax_type = self._detect_syntax_type(ext)
-                return {
-                    **base_data,
-                    "viewType": "text",
-                    "content": content,
-                    "syntaxType": syntax_type,
-                    "lineCount": len(content.splitlines())
-                }
-
-            elif ftype == 'pdf':
-                # PDF：頁面圖像 + 基本資訊
-                if fitz is not None:
-                    try:
-                        doc = fitz.open(path)
-                        page_images = self._render_pdf_pages(path, max_pages=20, zoom=1.8)
-                        metadata = doc.metadata
-                        doc.close()
-                        return {
-                            **base_data,
-                            "viewType": "pdf",
-                            "pageCount": len(page_images),
-                            "pageImages": page_images,
-                            "metadata": {
-                                "title": metadata.get('title', ''),
-                                "author": metadata.get('author', ''),
-                                "subject": metadata.get('subject', ''),
-                                "creator": metadata.get('creator', '')
-                            }
-                        }
-                    except Exception:
-                        pass
-                return {**base_data, "viewType": "unsupported", "reason": "需要安裝 PyMuPDF"}
-
-            elif ftype == 'docx':
-                # DOCX：結構化內容 + 樣式資訊
-                if Document is not None:
-                    try:
-                        doc = Document(path)
-                        paragraphs = []
-                        tables = []
-                        
-                        for para in doc.paragraphs:
-                            if para.text.strip():
-                                paragraphs.append({
-                                    "text": para.text,
-                                    "style": para.style.name if para.style else "Normal",
-                                    "alignment": str(para.alignment) if para.alignment else "LEFT"
-                                })
-                        
-                        for table in doc.tables:
-                            table_data = []
-                            for row in table.rows:
-                                row_data = [cell.text.strip() for cell in row.cells]
-                                table_data.append(row_data)
-                            if table_data:
-                                tables.append(table_data)
-                        
-                        return {
-                            **base_data,
-                            "viewType": "docx",
-                            "paragraphs": paragraphs,
-                            "tables": tables,
-                            "paraCount": len(paragraphs),
-                            "tableCount": len(tables)
-                        }
-                    except Exception:
-                        pass
-                return {**base_data, "viewType": "unsupported", "reason": "需要安裝 python-docx"}
-
-            elif ftype == 'doc':
-                # DOC：透過 COM 讀取（若可用）
-                if win32com is not None:
-                    try:
-                        word = win32com.gencache.EnsureDispatch('Word.Application')
-                        word.Visible = False
-                        doc = word.Documents.Open(path, ReadOnly=True)
-                        content = doc.Content.Text if doc and doc.Content else ''
-                        page_count = doc.Range().Information(win32com.constants.wdNumberOfPagesInDocument) if doc else 0
-                        doc.Close(False)
-                        word.Quit()
-                        
-                        return {
-                            **base_data,
-                            "viewType": "doc",
-                            "content": content.replace("\r", "\n"),
-                            "pageCount": page_count,
-                            "wordCount": len(content.split()) if content else 0
-                        }
-                    except Exception:
-                        pass
-                return {**base_data, "viewType": "unsupported", "reason": "需要 Windows + MS Word + pywin32"}
-
-            else:
-                # 二進位檔案：十六進制檢視器
-                return self._create_hex_view(path, base_data)
-
-        except Exception as e:
-            return {
-                "type": ftype,
-                "viewType": "error",
-                "error": str(e),
-                "fileName": os.path.basename(path)
-            }
-
-    def _detect_syntax_type(self, ext: str) -> str:
         """根據副檔名偵測語法類型，用於語法高亮提示。"""
         syntax_map = {
             '.py': 'python',
@@ -459,3 +406,172 @@ class TestBackend(QObject):
             }
         except Exception:
             return {**base_data, "viewType": "error", "error": "無法讀取檔案"}
+
+    # 新增：建立預設的處理後輸出路徑（系統暫存目錄/AnoniMe/processed）
+    def _make_processed_output_path(self, in_path: str) -> str:
+        base = os.path.splitext(os.path.basename(in_path))[0]
+        ext = os.path.splitext(in_path)[1].lower()
+        if ext not in ('.pdf', '.docx', '.txt'):
+            # 預設轉回原副檔名
+            out_ext = ext or '.out'
+        else:
+            out_ext = ext
+        out_dir = os.path.join(tempfile.gettempdir(), 'AnoniMe', 'processed')
+        os.makedirs(out_dir, exist_ok=True)
+        return os.path.join(out_dir, f"{base}_deid{out_ext}")
+
+    # 新增：同步執行處理腳本，擷取 stdout 中的 file:// URL 並回傳 (url, path)
+    def _run_processor_and_get_output(self, script_name: str, in_path: str, out_path: str | None = None) -> tuple[str | None, str | None]:
+        script_path = Path(__file__).resolve().parent / script_name
+        if not script_path.exists():
+            print(f"[processor missing] {script_name} 不存在")
+            return None, None
+        try:
+            cmd = [sys.executable, str(script_path), in_path]
+            if out_path:
+                cmd.append(out_path)
+            res = subprocess.run(cmd, cwd=str(script_path.parent), capture_output=True, text=True, timeout=600)
+            stdout = (res.stdout or '').strip()
+            stderr = (res.stderr or '').strip()
+            if res.returncode != 0:
+                print(f"[processor nonzero] {script_name} rc={res.returncode}")
+                if stderr:
+                    print(stderr[:2000])
+            # 1) 優先：找最後一行 file:// URL
+            url = None
+            if stdout:
+                lines = [ln.strip() for ln in stdout.splitlines() if ln.strip()]
+                for ln in reversed(lines):
+                    if ln.lower().startswith('file://'):
+                        url = ln
+                        break
+                # 2) 次要：行中包含 file:// 片段
+                if url is None:
+                    m = re.search(r'file://\S+', stdout, flags=re.IGNORECASE)
+                    if m:
+                        url = m.group(0)
+                # 3) 次要：嘗試從 stdout 解析 Windows 路徑
+                if url is None:
+                    # 取最後一個存在的檔案路徑
+                    for ln in reversed(lines):
+                        # 移除常見前綴（例如：輸出檔案: ）
+                        cand = re.sub(r'^[^A-Za-z0-9]+', '', ln)
+                        # 簡單偵測 Windows/Unix 路徑
+                        win_path = re.search(r'[A-Za-z]:\\[^\n\r]+', cand)
+                        if win_path and os.path.exists(win_path.group(0)):
+                            p = win_path.group(0)
+                            try:
+                                return Path(p).resolve().as_uri(), p
+                            except Exception:
+                                return None, None
+                        if os.path.exists(cand):
+                            try:
+                                return Path(cand).resolve().as_uri(), cand
+                            except Exception:
+                                return None, None
+            # 4) 若指定 out_path 且檔案存在，直接回傳
+            if url is None and out_path and os.path.exists(out_path):
+                try:
+                    return Path(out_path).resolve().as_uri(), out_path
+                except Exception:
+                    pass
+            if not url:
+                print('[processor parse] 未取得輸出 URL，stdout/stderr:')
+                if stdout:
+                    print(stdout[:2000])
+                if stderr:
+                    print(stderr[:2000])
+                return None, None
+            # 轉成本機路徑
+            path = self._file_url_to_path(url)
+            if path is None:
+                # 如果不是 URL，視為本機路徑並回推 URL
+                path = url
+                try:
+                    url = Path(path).resolve().as_uri()
+                except Exception:
+                    url = None
+            return url, path
+        except Exception as e:
+            print(f"[processor exec error] {script_name}: {e}")
+            return None, None
+
+    # 新增：file:// URL 轉成本機路徑（含 Windows 相容）
+    def _file_url_to_path(self, url: str) -> str | None:
+        try:
+            if not url.lower().startswith('file:'):
+                return None
+            u = urlparse(url)
+            p = unquote(u.path)
+            if sys.platform == 'win32':
+                # 處理 /C:/ 形式
+                if p.startswith('/') and len(p) > 3 and p[2] == ':':
+                    p = p[1:]
+                return p.replace('/', '\\')
+            return p
+        except Exception:
+            return None
+
+    def _convert_office_to_pdf(self, path: str) -> str | None:
+        """使用 Word COM 將 DOC/DOCX 轉為 PDF。僅在 Windows + 安裝 Word + pywin32 時可行。"""
+        if sys.platform != 'win32' or win32com is None:
+            return None
+        word = None
+        try:
+            word = win32com.client.Dispatch('Word.Application')  # type: ignore[attr-defined]
+            word.Visible = False
+            doc = word.Documents.Open(path)
+            # 將 PDF 輸出到工作目錄的 tmp_preview
+            out_dir = os.path.join(os.getcwd(), 'tmp_preview')
+            os.makedirs(out_dir, exist_ok=True)
+            out_pdf = os.path.join(out_dir, os.path.splitext(os.path.basename(path))[0] + '.pdf')
+            wdFormatPDF = 17
+            doc.SaveAs(out_pdf, FileFormat=wdFormatPDF)
+            doc.Close(False)
+            return out_pdf
+        except Exception:
+            return None
+        finally:
+            try:
+                if word is not None:
+                    word.Quit()
+            except Exception:
+                pass
+
+    @Slot(result=str)
+    def getTempOutputDir(self) -> str:
+        """回傳應用程式臨時輸出資料夾（供 QML 顯示或開啟）。"""
+        try:
+            out_dir = os.path.join(tempfile.gettempdir(), 'AnoniMe')
+            os.makedirs(out_dir, exist_ok=True)
+            return out_dir
+        except Exception as e:
+            return f"[tempdir error] {e}"
+
+    @Slot()
+    def createTempTestFile(self):
+        """建立一個臨時測試檔並把結果透過 resultsReady 發到 ResultPage。"""
+        try:
+            out_dir = self.getTempOutputDir()
+            fn = f"preview_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            p = os.path.join(out_dir, fn)
+            with open(p, 'w', encoding='utf-8') as f:
+                f.write(f"Temporary file created: {p}\n")
+            payload = [{
+                "fileName": os.path.basename(p),
+                "type": "text",
+                "originalText": f"Temporary file created: {p}",
+                "maskedText": f"Temporary file created: {p}",
+                "embedData": {"viewType": "text", "content": f"File path:\n{p}", "syntaxType": "text", "lineCount": 2},
+                "fileUrl": Path(p).as_uri()
+            }]
+            self.resultsReady.emit(json.dumps(payload, ensure_ascii=False))
+        except Exception as e:
+            payload = [{
+                "fileName": "temp_error.txt",
+                "type": "text",
+                "originalText": f"[error] {e}",
+                "maskedText": f"[error] {e}",
+                "embedData": {"viewType": "text", "content": str(e), "syntaxType": "text", "lineCount": 1}
+            }]
+            self.resultsReady.emit(json.dumps(payload, ensure_ascii=False))

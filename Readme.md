@@ -2,7 +2,7 @@
 python -m venv .venv
 .venv\Scripts\activate
 python.exe -m pip install --upgrade pip
-pip install PySide6 python-docx
+pip install PySide6 python-docx pymupdf pywin32 pypdf
 
 # 開啟專案
 python.exe .\main.py   
