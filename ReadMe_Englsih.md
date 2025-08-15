@@ -1,7 +1,4 @@
 # AnoniMe - Personal Information Anonymization Tool
-# AnoniMe - 個人資訊匿名化工具
-
-[English](#english) | [中文](#chinese)
 
 ---
 
