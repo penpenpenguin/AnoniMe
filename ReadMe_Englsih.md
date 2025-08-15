@@ -35,12 +35,11 @@ AnoniMe/
 ├── faker_models/             # Data replacement modules
 │   ├── presidio_replacer.py  # Main replacement engine
 │   └── tony_faker.py         # Custom fake data generators
-├── file_handlers/            # File processing modules
-│   ├── txt_handler.py        # Text file handler
-│   ├── docx_handler.py       # Word document handler
-│   └── pdf_handler_1.py      # PDF processing handler
-└── scripts/                  # Utility scripts
-    └── minimal_text_demo.py  # Demonstration script
+└── file_handlers/            # File processing modules
+    ├── txt_handler.py        # Text file handler
+    ├── docx_handler.py       # Word document handler
+    └── pdf_handler.py      # PDF processing handler
+
 ```
 
 ### Core Technologies
@@ -158,9 +157,6 @@ python -m spacy download zh_core_web_sm
 
 #### Running the Application
 ```bash
-# Standard mode
-python main.py
-
 # Enhanced mode with preview
 python run_with_test_backend.py
 ```

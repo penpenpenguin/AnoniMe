@@ -28,12 +28,11 @@ AnoniMe/
 ├── faker_models/             # 資料替換模組
 │   ├── presidio_replacer.py  # 主要替換引擎
 │   └── tony_faker.py         # 自訂假資料產生器
-├── file_handlers/            # 檔案處理模組
-│   ├── txt_handler.py        # 文字檔處理器
-│   ├── docx_handler.py       # Word 文件處理器
-│   └── pdf_handler_1.py      # PDF 處理器
-└── scripts/                  # 工具腳本
-    └── minimal_text_demo.py  # 示範腳本
+└── file_handlers/            # 檔案處理模組
+    ├── txt_handler.py        # 文字檔處理器
+    ├── docx_handler.py       # Word 文件處理器
+    └── pdf_handler.py      # PDF 處理器
+  
 ```
 
 ### 核心技術
@@ -151,9 +150,6 @@ python -m spacy download zh_core_web_sm
 
 #### 執行應用程式
 ```bash
-# 標準模式
-python main.py
-
 # 增強模式含預覽功能
 python run_with_test_backend.py
 ```
