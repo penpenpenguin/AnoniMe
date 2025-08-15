@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 from file_handlers.docx_handler import DocxHandler
-from file_handlers.pdf_handler_1 import PdfHandler
+from file_handlers.pdf_handler import PdfHandler
 
 # 將當前目錄加入 Python 路徑
 current_dir = os.path.dirname(os.path.abspath(__file__))

@@ -19,7 +19,7 @@ except ImportError:
     DocxHandler = None
 
 try:
-    from file_handlers.pdf_handler_1 import PdfHandler
+    from file_handlers.pdf_handler import PdfHandler
 except ImportError:
     print("警告：無法導入 PdfHandler")
     PdfHandler = None
@@ -314,7 +314,7 @@ class Backend(QObject):
         return None, f"[不支援的檔案類型: {ftype}]"
 
     def _process_txt_file(self, input_path: str, output_path: str):
-        """處理文字檔案 - 對應 scripts/run_txt_file.py"""
+        """處理文字檔案"""
         try:
             if TextHandler is None:
                 return self._fallback_copy_file(input_path, output_path, "TextHandler 不可用")
@@ -333,7 +333,7 @@ class Backend(QObject):
             return self._fallback_copy_file(input_path, output_path, f"TXT 處理失敗: {str(e)}")
     
     def _process_docx_file(self, input_path: str, output_path: str):
-        """處理 Word 檔案 - 對應 scripts/run_docx_file.py"""
+        """處理 Word 檔案"""
         try:
             if DocxHandler is None:
                 return self._fallback_copy_file(input_path, output_path, "DocxHandler 不可用")
@@ -351,7 +351,7 @@ class Backend(QObject):
             return self._fallback_copy_file(input_path, output_path, f"DOCX 處理失敗: {str(e)}")
     
     def _process_pdf_file(self, input_path: str, output_path: str):
-        """處理 PDF 檔案 - 對應 scripts/run_pdf_file.py"""
+        """處理 PDF 檔案"""
         try:
             if PdfHandler is None:
                 return self._fallback_copy_file(input_path, output_path, "PdfHandler 不可用")

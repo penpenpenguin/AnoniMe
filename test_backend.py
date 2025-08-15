@@ -23,7 +23,7 @@ except ImportError:
     print("警告：無法導入 DocxHandler")
 
 try:
-    from file_handlers.pdf_handler_1 import PdfHandler
+    from file_handlers.pdf_handler import PdfHandler
 except ImportError:
     print("警告：無法導入 PdfHandler")
 
