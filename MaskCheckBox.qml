@@ -4,6 +4,13 @@ import QtQuick.Controls
 CheckBox {
     id: root
     property string optionKey: ""    // 新增：對應後端處理鍵
+    property bool locked: true       // 新增：鎖定（true=不可切換）
+
+    // 預設即為打勾，且被鎖定時不可取消
+    checked: true
+    checkable: !locked               // 鎖定時禁止切換，但外觀不變
+    // 若之後要允許取消，只要在使用處設定 locked: false 即可
+
     // 配色
     property color accent: "#66CC33"
     property color accentHover: "#59B481"

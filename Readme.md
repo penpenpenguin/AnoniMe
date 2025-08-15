@@ -8,4 +8,6 @@ pip install PySide6 python-docx pymupdf pywin32 pypdf
 python.exe .\main.py   
 
 # 從 venv 啟動設計畫面(要設計 layout 再開)
-.venv\Scripts\pyside6-designer.exe
+.venv\Scripts\pyside6-de
+
+signer.exe

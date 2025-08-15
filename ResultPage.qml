@@ -226,13 +226,23 @@ Rectangle {
                                     Layout.fillWidth: true
                                     text: "下載全部"
                                     enabled: resultModel.count > 0
-                                    onClicked: console.log("下載全部（示例）")
+                                    onClicked: {
+                                        if (backend && backend.exportAllAndClear) {
+                                            backend.exportAllAndClear()
+                                        }
+                                    }
                                 }
                                 Button {
                                     id: homeBtn
                                     Layout.fillWidth: true
                                     text: "返回首頁"
-                                    onClicked: pageRoot.requestNavigate("home", null)
+                                    onClicked: {
+                                        if (backend && backend.clearTestOutput) {
+                                            backend.clearTestOutput(false)   // False=整個 test_output 都清掉
+                                        } else {
+                                            pageRoot.requestNavigate("home", null)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -329,6 +339,29 @@ Rectangle {
                     }
                 }
             }
+        }
+    }
+
+    Connections {
+        target: backend
+        function onExportReady(url) {
+            console.log("Export ZIP:", url)
+            Qt.openUrlExternally(url)        // 觸發下載/用檔案總管開啟
+            // exportAllAndClear 已經清空 test_output，直接回首頁
+            pageRoot.requestNavigate("home", null)
+        }
+        function onExportFailed(msg) {
+            console.warn("Export failed:", msg)
+        }
+        function onOutputsCleared(msg) {
+            console.log("[outputsCleared]", msg)
+            // 清理完成後再回首頁（對「返回首頁」按鈕）
+            pageRoot.requestNavigate("home", null)
+        }
+        function onOutputsClearFailed(msg) {
+            console.warn("[outputsClearFailed]", msg)
+            // 即使失敗也避免卡住，仍回首頁
+            pageRoot.requestNavigate("home", null)
         }
     }
 }

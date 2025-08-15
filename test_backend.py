@@ -8,6 +8,7 @@ import sys  # 新增：供平台判斷
 import subprocess  # 新增：啟動外部處理腳本
 from urllib.parse import urlparse, unquote  # 新增：解析 file:// URL
 import re  # 新增：解析 stdout 中的路徑
+from zipfile import ZipFile, ZIP_DEFLATED
 
 from PySide6.QtCore import QObject, Signal, Slot
 
@@ -65,7 +66,17 @@ APP_ROOT = Path(__file__).resolve().parent
 APP_OUTPUT_DIR = APP_ROOT / "test_output"
 APP_PREVIEW_DIR = APP_OUTPUT_DIR / "_previews"
 APP_OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
+APP_EXPORT_DIR = APP_OUTPUT_DIR / "exports"  # ← 新增
 APP_PREVIEW_DIR.mkdir(exist_ok=True, parents=True)
+
+def _downloads_dir() -> Path:
+    # 優先使用使用者的 Downloads；沒有就用系統暫存
+    if os.name == "nt":
+        home = Path(os.environ.get("USERPROFILE", str(Path.home())))
+        dl = home / "Downloads"
+    else:
+        dl = Path.home() / "Downloads"
+    return dl if dl.exists() else Path(tempfile.gettempdir())
 
 def _text_to_pdf_no_font(src_txt_path: str, out_pdf_path: str) -> str:
     print("[PREVIEW] TXT->PDF via helv only:", src_txt_path)
@@ -141,6 +152,10 @@ class TestBackend(QObject):
 
     filesChanged = Signal(list)
     resultsReady = Signal(str)  # JSON: [{fileName, type, originalText, maskedText}]
+    exportReady = Signal(str)   # ← 打包成功，回傳 zip 的 file:// URL
+    exportFailed = Signal(str)  # ← 打包失敗訊息
+    outputsCleared = Signal(str)       # 清理完成訊息
+    outputsClearFailed = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -221,7 +236,6 @@ class TestBackend(QObject):
 
                 pdf_path = _ensure_pdf_for_preview(out_path)   # 不用任何字型檔
                 page_urls = _rasterize_pdf(pdf_path)
-
                 results.append({
                     "fileName": os.path.basename(out_path),
                     "type": "pdf",
@@ -235,15 +249,109 @@ class TestBackend(QObject):
                         "pageCount": len(page_urls),
                     },
                     "fileUrl": Path(out_path).as_uri(),
-                })
+                })      
             except Exception as e:
                 results.append({
                     "fileName": name, "type": ftype,
                     "originalText": "", "maskedText": "",
                     "embedData": {"viewType": "error", "error": str(e)},
                 })
-
+                        
+        self._last_results = results               
         self.resultsReady.emit(json.dumps(results, ensure_ascii=False))
+
+    # 打包全部處理後檔案成 ZIP
+    @Slot()
+    def exportAll(self):
+        try:
+            # 先用本次結果的 fileUrl 蒐集
+            files = []
+            for item in (self._last_results or []):
+                url = item.get("fileUrl") if isinstance(item, dict) else None
+                p = self._file_url_to_path(url) if url else None
+                if p and os.path.isfile(p):
+                    files.append(p)
+
+            # 若本次結果為空，退回掃描 test_output（排除 _previews/exports）
+            if not files:
+                for p in APP_OUTPUT_DIR.rglob("*"):
+                    if p.is_file() and "_previews" not in p.parts and "exports" not in p.parts:
+                        files.append(str(p))
+
+            # 去重
+            files = list(dict.fromkeys(files))
+
+            if not files:
+                self.exportFailed.emit("沒有可匯出的檔案")
+                return
+
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            zip_path = APP_EXPORT_DIR / f"results_{ts}.zip"
+
+            manifest = []
+            with ZipFile(zip_path, "w", ZIP_DEFLATED) as z:
+                for fp in files:
+                    arc = os.path.basename(fp)  # 壓縮包內僅保留檔名
+                    z.write(fp, arcname=arc)
+                    manifest.append({"file": arc, "src": fp})
+                z.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+
+            self.exportReady.emit(Path(zip_path).as_uri())
+        except Exception as e:
+            self.exportFailed.emit(str(e))
+
+    @Slot()
+    def exportAllAndClear(self):
+        """
+        將 test_output 整個資料夾(遞迴)打包成 ZIP -> 放到 Downloads
+        然後清空 test_output。成功會 emit exportReady(url)，失敗 emit exportFailed(msg)。
+        """
+        try:
+            if not APP_OUTPUT_DIR.exists():
+                self.exportFailed.emit("test_output 不存在")
+                return
+
+            # 建立 zip 目的地
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            dst_dir = _downloads_dir()
+            zip_path = dst_dir / f"AnoniMe_results_{ts}.zip"
+
+            # 打包（保留 test_output 內部相對路徑結構）
+            with ZipFile(zip_path, "w", ZIP_DEFLATED) as zf:
+                base_len = len(str(APP_OUTPUT_DIR.parent)) + 1
+                for root, dirs, files in os.walk(APP_OUTPUT_DIR):
+                    for name in files:
+                        fp = Path(root) / name
+                        # 避免把未來可能放在 test_output 的 zip 也一起再打包
+                        if fp.resolve() == zip_path.resolve():
+                            continue
+                        arcname = str(fp)[base_len:]  # 例如 test_output\processed\xxx
+                        zf.write(fp, arcname)
+
+            # 清空 test_output
+            try:
+                shutil.rmtree(APP_OUTPUT_DIR, ignore_errors=True)
+            finally:
+                APP_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+            # 回報成功（QML 收到後開啟並導回首頁）
+            self.exportReady.emit(zip_path.as_uri())
+            self.outputsCleared.emit("已清除 test_output")
+        except Exception as e:
+            self.exportFailed.emit(str(e))
+
+    @Slot(bool)
+    def clearTestOutput(self, keepExports: bool = False):
+        """
+        清除 test_output。keepExports 參數目前保留，預設 False=整個清掉。
+        """
+        try:
+            if APP_OUTPUT_DIR.exists():
+                shutil.rmtree(APP_OUTPUT_DIR, ignore_errors=True)
+            APP_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+            self.outputsCleared.emit("已清除 test_output")
+        except Exception as e:
+            self.outputsClearFailed.emit(str(e))
 
     # 讀取 -----------------------------------------------------
     def _read_file_preview(self, path: str, ftype: str, max_chars: int = 4000) -> str:
