@@ -1,0 +1,14 @@
+Curriculum Vitae
+Personal Information
+Name: Mary Mcdonald
+Date of Birth: 1978-06-11
+Phone: (401)354-1010x0406
+Kimberly Harper: user@example.com
+Address: 123 Main Street, 58485 Gina Fork
+Lake Mark, CA 06673, IL 60605
+Social Security Number: 987-65-4321
+Education
+Computer Science in Computer Science (unknown_date_time)
+Experience
+ABC Technologies - Software Engineer (unknown_date_time)
+XYZ Security Consulting - Cybersecurity Consultant (unknown_date_time)

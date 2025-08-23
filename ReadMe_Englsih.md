@@ -143,6 +143,7 @@ def replace_pii(text, analyzer_results):
 ### Prerequisites
 ```bash
 pip install PySide6 presidio-analyzer presidio-anonymizer spacy faker PyMuPDF python-docx
+pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision torchaudio
 python -m spacy download en_core_web_sm
 python -m spacy download zh_core_web_sm
 ```

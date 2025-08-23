@@ -4,6 +4,7 @@
 import os
 import sys
 from pathlib import Path
+
 from file_handlers.docx_handler import DocxHandler
 from file_handlers.pdf_handler import PdfHandler
 
@@ -44,7 +45,7 @@ def main():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     # 匯入並建立 Backend
-    from main import Backend
+    from app.main import Backend
     backend = Backend()
     backend._files = files
     backend._options = ["name", "email", "phone", "id", "address"]  # 依需求調整
