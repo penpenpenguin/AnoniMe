@@ -9,6 +9,9 @@ import subprocess  # 新增：啟動外部處理腳本
 from urllib.parse import urlparse, unquote  # 新增：解析 file:// URL
 import re  # 新增：解析 stdout 中的路徑
 from zipfile import ZipFile, ZIP_DEFLATED
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from PySide6.QtCore import QObject, Signal, Slot
 
@@ -26,6 +29,7 @@ try:
     from file_handlers.pdf_handler import PdfHandler
 except ImportError:
     print("警告：無法導入 PdfHandler")
+    
 
 try:
     from docx import Document  # for .docx
@@ -156,6 +160,7 @@ class TestBackend(QObject):
     exportFailed = Signal(str)  # ← 打包失敗訊息
     outputsCleared = Signal(str)       # 清理完成訊息
     outputsClearFailed = Signal(str)
+    stateCleared = Signal()        
 
     def __init__(self):
         super().__init__()
@@ -217,7 +222,7 @@ class TestBackend(QObject):
         僅改『預覽』：先讓 Backend 產生去識別後檔案，再統一轉 PDF（不依賴外部字型），
         最後轉頁圖回傳給前端。核心處理流程不變。
         """
-        from main import Backend
+        from app.main import Backend
         backend = Backend()
         backend._options = self._options
 
@@ -420,6 +425,7 @@ class TestBackend(QObject):
             return f"[非文字類型，大小 {size} bytes]"
         except Exception as e:
             return f"[讀取錯誤] {e}"
+
 
     def _truncate(self, data: str, max_chars: int) -> str:
         if data is None:

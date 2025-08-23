@@ -2,6 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs   // Qt6 新 API
+import "./components" 
+import "."
 
 Item {
     id: uploadRoot
