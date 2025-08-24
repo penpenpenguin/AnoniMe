@@ -1,7 +1,7 @@
 # file_handlers/text_handler.py
 import os
 from pii_models.presidio_detector import detect_pii
-from faker_models.presidio_replacer import replace_pii
+from faker_models.presidio_replacer_plus import replace_pii
 
 class TextHandler:
     """

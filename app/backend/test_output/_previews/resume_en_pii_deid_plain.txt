@@ -1,14 +1,13 @@
 Curriculum Vitae
 Personal Information
-Name: Mary Mcdonald
-Date of Birth: 1978-06-11
-Phone: (401)354-1010x0406
-Kimberly Harper: user@example.com
-Address: 123 Main Street, 58485 Gina Fork
-Lake Mark, CA 06673, IL 60605
-Social Security Number: 987-65-4321
+Name: William Chen
+Date of Birth: 5244-27-12
+Phone: (044) 231-9733
+Email: william.chen@yahoo.com
+Address: 123 Main Street, Chicago, IL 60605
+Social Security Number: 810-32-1787
 Education
-Computer Science in Computer Science (unknown_date_time)
+University of Illinois - B.S. in Computer Science (5662-4780)
 Experience
-ABC Technologies - Software Engineer (unknown_date_time)
-XYZ Security Consulting - Cybersecurity Consultant (unknown_date_time)
+ABC Technologies - Software Engineer (8215-0507)
+XYZ Security Consulting - Cybersecurity Consultant (3076-4699)
