@@ -4,13 +4,20 @@ import os
 from docx import Document
 from pii_models.presidio_detector import detect_pii
 from faker_models.presidio_replacer_plus import replace_pii
-from faker_models.ai_replacer import replace_entities
+# from faker_models.ai_replacer import replace_entities
+
+from models.providers import get_chat_client                     # ★ 只讀 .env 的那版
+from faker_models.muiltAI_pii_replace import replace_entities, MappingStore
 
 class DocxHandler:
     """
     處理 .docx 檔案 in-place 去識別化，
     保留所有段落格式、run 樣式與表格結構。
     """
+    # 新增：多模型輪替 & 映射快取
+    def __init__(self):                                   # ★ 建議加：初始化一次 client & 映射快取
+        self.client = get_chat_client()                   # ★ 多模型輪替 & 配額控管交給 providers
+        self.mapping = MappingStore() 
 
     def deidentify(self, input_path: str, output_path: str, language: str = "auto") -> str:
         """
@@ -36,10 +43,16 @@ class DocxHandler:
             
             if entities:
                 # 生成替換後的完整文字
-                # new_full_text = replace_pii(full_text, entities)
-                print("替換內容:", full_text, entities)
-                new_full_text = replace_entities(full_text, entities)
-                print("生成內容:", new_full_text)
+                #new_full_text = replace_pii(full_text, entities)
+                #new_full_text = replace_entities(full_text, entities)
+                new_full_text = replace_entities(                   # ★ (新)
+                    full_text,
+                    entities,
+                    chat_client=self.client,
+                    mapping=self.mapping,        # ★ 同一份 mapping，保持一致性
+                    # batch_size=30,             # 可調；大量文件時 20~50 都可
+                )
+                print("替換後內容：", new_full_text)
 
                 
                 if new_full_text != full_text:
@@ -68,7 +81,13 @@ class DocxHandler:
                         if entities:
                             # 生成替換後的完整文字
                             # new_full_text = replace_pii(full_text, entities)
-                            new_full_text = replace_entities(full_text, entities)
+                            # new_full_text = replace_entities(full_text, entities)
+                            new_full_text = replace_entities(                          # ★ (新)
+                                full_text,
+                                entities,
+                                chat_client=self.client,
+                                mapping=self.mapping,   # ★ 同一份映射
+                            )
                             
                             if new_full_text != full_text:
                                 # 清空所有 runs 並重新設置文字
