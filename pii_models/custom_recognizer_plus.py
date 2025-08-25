@@ -72,52 +72,61 @@ def register_custom_entities(analyzer: AnalyzerEngine):
     ]
     
     # ==== NEW: Duration (時間長度) ====
-    # 專門處理如 "15 years of experience", "3 months", "2 weeks" 等時間長度表達
+    # 改進版：更簡潔的時間持續期識別，主要基於數字 + 時間單位的模式
     duration_patterns = [
+        # 核心模式：數字 + 時間單位（年/月/週/日）
         Pattern(
-            name="duration_years_experience_variations",
-            regex=r"\b\d+\s+years?\s+of\s+(?:working\s+)?experiences?\b",  # 支援 working + 複數
-            score=0.98
+            name="duration_basic_time_units",
+            regex=r"\b\d+\s+(?:years?|months?|weeks?|days?)\b",
+            score=0.92  # 高分數，因為這是明確的時間持續期指標
         ),
+        # 中文時間單位支援
         Pattern(
-            name="duration_years_experience",
-            regex=r"\b\d+\s+years?\s+of\s+experiences?\b",
-            score=0.98  # 非常高的分數
+            name="duration_chinese_time_units",
+            regex=r"\b\d+\s*(?:年|個月|月|週|星期|日|天)\b",
+            score=0.92
         ),
-        Pattern(
-            name="duration_years_old",
-            regex=r"\b\d+\s+years?\s+old\b",
-            score=0.98
-        ),
-        Pattern(
-            name="duration_years_experience_with_adjectives",
-            regex=r"\b\d+\s+years?\s+of\s+(?:working|professional|relevant|related|practical)\s+experiences?\b",
-            score=0.98
-        ),
-        Pattern(
-            name="duration_years_work",
-            regex=r"\b\d+\s+years?\s+(?:of\s+)?(?:work|working|service|training|study|employment)\b",
-            score=0.96
-        ),
+        # 帶有 "ago" 的時間表達（明確的時間參考）
         Pattern(
             name="duration_time_ago",
             regex=r"\b\d+\s+(?:years?|months?|weeks?|days?)\s+ago\b",
+            score=0.98  # 最高分數，因為有明確的時間上下文
+        ),
+        # 年齡表達（排除純粹的年份，如 2023）
+        Pattern(
+            name="duration_age_expression",
+            regex=r"\b\d{1,2}\s+years?\s+old\b",
             score=0.95
         ),
+        # 經驗年數（保留一些明確的經驗表達）
         Pattern(
-            name="duration_months_experience",
-            regex=r"\b\d+\s+months?\s+(?:of\s+)?(?:experience|work|service)\b",
-            score=0.95
+            name="duration_experience_explicit",
+            regex=r"\b\d+\s+(?:years?|months?)\s+(?:of\s+)?(?:experience|experiences?)\b",
+            score=0.96
         ),
+        # 工作年資表達
         Pattern(
-            name="duration_months_experience_1",
-            regex=r"\b\d+\s+months?\s+(?:of\s+)?(?:working\s+)?experiences?\b",
-            score=0.95
+            name="duration_work_period",
+            regex=r"\b\d+\s+(?:years?|months?)\s+(?:of\s+)?(?:work|service|employment)\b",
+            score=0.94
         ),
+        # 帶小數點的時間表達（如 2.5 years）
         Pattern(
-            name="duration_general_with_context",
-            regex=r"\b\d+\s+(?:years?|months?|weeks?|days?)\s+(?:of\s+)?(?:working\s+)?(?:experiences?|work|service|training|study|employment|ago)\b",
+            name="duration_decimal_time",
+            regex=r"\b\d+(?:\.\d+)?\s*(?:years?|months?|weeks?|days?)\b",
             score=0.90
+        ),
+        # 範圍表達（如 3-5 years）
+        Pattern(
+            name="duration_range_time",
+            regex=r"\b\d+[-]\d+\s+(?:years?|months?|weeks?|days?)\b",
+            score=0.95
+        ),
+        # 時間長度 + over/under/about 等修飾詞
+        Pattern(
+            name="duration_with_modifiers",
+            regex=r"\b(?:over|under|about|around|approximately|roughly)\s+\d+\s+(?:years?|months?|weeks?|days?)\b",
+            score=0.93
         )
     ]
 
@@ -174,12 +183,19 @@ def register_custom_entities(analyzer: AnalyzerEngine):
 
     # zh/en 都註冊（Presidio 會依語言分流）
     for lang in ("zh", "en"):
-        # 時間長度識別器
+        # 時間長度識別器 - 更新 context 以適應簡化的模式
         duration_recognizer = PatternRecognizer(
             supported_entity="DURATION_TIME",
             patterns=duration_patterns,
             supported_language=lang,
-            context=["experience", "work", "service", "training", "employment", "old", "ago", "years", "months", "weeks", "days"]
+            context=[
+                # 英文上下文
+                "experience", "work", "service", "training", "employment", "old", "ago", 
+                "years", "months", "weeks", "days", "year", "month", "week", "day",
+                "over", "under", "about", "around", "approximately", "roughly",
+                # 中文上下文
+                "年", "月", "週", "星期", "日", "天", "個月", "經驗", "工作", "服務", "歲"
+            ]
         )
         
         # 身分證
