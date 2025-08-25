@@ -13,6 +13,9 @@
   AIHUB_MODEL=Llama-3.1-8B
   ```
   注意：Core42 要用 Authorization: Bearer <key>，路徑必須是 /apis/v2/chat/completions。
+  
+  需要設定：$env:AIHUB_FULL_URL = "https://playground.core42.ai/apis"
+
 
 - 連線自測（確認 token/URL 正確）：
   ```

@@ -70,6 +70,56 @@ def register_custom_entities(analyzer: AnalyzerEngine):
             score=0.95  # 提高分數
         ),
     ]
+    
+    # ==== NEW: Duration (時間長度) ====
+    # 專門處理如 "15 years of experience", "3 months", "2 weeks" 等時間長度表達
+    duration_patterns = [
+        Pattern(
+            name="duration_years_experience_variations",
+            regex=r"\b\d+\s+years?\s+of\s+(?:working\s+)?experiences?\b",  # 支援 working + 複數
+            score=0.98
+        ),
+        Pattern(
+            name="duration_years_experience",
+            regex=r"\b\d+\s+years?\s+of\s+experiences?\b",
+            score=0.98  # 非常高的分數
+        ),
+        Pattern(
+            name="duration_years_old",
+            regex=r"\b\d+\s+years?\s+old\b",
+            score=0.98
+        ),
+        Pattern(
+            name="duration_years_experience_with_adjectives",
+            regex=r"\b\d+\s+years?\s+of\s+(?:working|professional|relevant|related|practical)\s+experiences?\b",
+            score=0.98
+        ),
+        Pattern(
+            name="duration_years_work",
+            regex=r"\b\d+\s+years?\s+(?:of\s+)?(?:work|working|service|training|study|employment)\b",
+            score=0.96
+        ),
+        Pattern(
+            name="duration_time_ago",
+            regex=r"\b\d+\s+(?:years?|months?|weeks?|days?)\s+ago\b",
+            score=0.95
+        ),
+        Pattern(
+            name="duration_months_experience",
+            regex=r"\b\d+\s+months?\s+(?:of\s+)?(?:experience|work|service)\b",
+            score=0.95
+        ),
+        Pattern(
+            name="duration_months_experience_1",
+            regex=r"\b\d+\s+months?\s+(?:of\s+)?(?:working\s+)?experiences?\b",
+            score=0.95
+        ),
+        Pattern(
+            name="duration_general_with_context",
+            regex=r"\b\d+\s+(?:years?|months?|weeks?|days?)\s+(?:of\s+)?(?:working\s+)?(?:experiences?|work|service|training|study|employment|ago)\b",
+            score=0.90
+        )
+    ]
 
     # ==== NEW: Taiwan Landline (市話) ====
     # 形式：0X~0XXX 區碼 + 6~8碼；可為 (0X)xxxxxxx、0X-xxxx-xxxx、+886 X xxxxxxxx 等
@@ -124,6 +174,14 @@ def register_custom_entities(analyzer: AnalyzerEngine):
 
     # zh/en 都註冊（Presidio 會依語言分流）
     for lang in ("zh", "en"):
+        # 時間長度識別器
+        duration_recognizer = PatternRecognizer(
+            supported_entity="DURATION_TIME",
+            patterns=duration_patterns,
+            supported_language=lang,
+            context=["experience", "work", "service", "training", "employment", "old", "ago", "years", "months", "weeks", "days"]
+        )
+        
         # 身分證
         tw_id_recognizer = PatternRecognizer(
             supported_entity="TW_ID_NUMBER",
@@ -211,6 +269,8 @@ def register_custom_entities(analyzer: AnalyzerEngine):
         )
 
         # ---- register all ----
+        # 在註冊部分加入
+        analyzer.registry.add_recognizer(duration_recognizer)
         analyzer.registry.add_recognizer(tw_id_recognizer)
         analyzer.registry.add_recognizer(tw_ubn_recognizer)
         analyzer.registry.add_recognizer(tw_phone_recognizer)

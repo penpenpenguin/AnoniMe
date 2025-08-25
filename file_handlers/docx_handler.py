@@ -3,13 +3,21 @@
 import os
 from docx import Document
 from pii_models.presidio_detector import detect_pii
-from faker_models.presidio_replacer import replace_pii
+from faker_models.presidio_replacer_plus import replace_pii
+# from faker_models.ai_replacer import replace_entities
+
+from models.providers import get_chat_client                     # ★ 只讀 .env 的那版
+from faker_models.muiltAI_pii_replace import replace_entities, MappingStore
 
 class DocxHandler:
     """
     處理 .docx 檔案 in-place 去識別化，
     保留所有段落格式、run 樣式與表格結構。
     """
+    # 新增：多模型輪替 & 映射快取
+    def __init__(self):                                   # ★ 建議加：初始化一次 client & 映射快取
+        self.client = get_chat_client()                   # ★ 多模型輪替 & 配額控管交給 providers
+        self.mapping = MappingStore() 
 
     def deidentify(self, input_path: str, output_path: str, language: str = "auto") -> str:
         """
@@ -22,31 +30,75 @@ class DocxHandler:
             raise FileNotFoundError(f"找不到輸入檔：{input_path}")
 
         doc = Document(input_path)
-
+        
         # 處理段落中的 runs
         for para in doc.paragraphs:
-            for run in para.runs:
-                original = run.text
-                entities = detect_pii(original, language="en", score_threshold=0.6)
-                # print("處理段落 run：", original)
-                # print("偵測到的實體：", entities)
-                new_text = replace_pii(original, entities)
-                if new_text != original:
-                    run.text = new_text
+            # 合併整個段落的文字
+            full_text = para.text
+            if not full_text.strip():
+                continue
+            # 對完整段落進行實體偵測
+            entities = detect_pii(full_text, language="en", score_threshold=0.6)
+            print(f"處理段落：'{full_text}'", "\n")
+            
+            if entities:
+                # 生成替換後的完整文字
+                #new_full_text = replace_pii(full_text, entities)
+                #new_full_text = replace_entities(full_text, entities)
+                new_full_text = replace_entities(                   # ★ (新)
+                    full_text,
+                    entities,
+                    chat_client=self.client,
+                    mapping=self.mapping,        # ★ 同一份 mapping，保持一致性
+                    # batch_size=30,             # 可調；大量文件時 20~50 都可
+                )
+                print("替換後內容：", new_full_text)
+
+                
+                if new_full_text != full_text:
+                    # 清空所有 runs 並重新設置文字
+                    for run in para.runs:
+                        run.text = ""
+                    
+                    # 將新文字設置到第一個 run（如果存在）
+                    if para.runs:
+                        para.runs[0].text = new_full_text
+                    else:
+                        # 如果沒有 runs，創建一個新的
+                        para.add_run(new_full_text)
 
         # 處理表格
         for table in doc.tables:
             for row in table.rows:
                 for cell in row.cells:
                     for para in cell.paragraphs:
-                        for run in para.runs:
-                            original = run.text
-                            entities = detect_pii(original, language="en", score_threshold=0.6)
-                            # print("處理表格 cell run：", original)
-                            # print("偵測到的實體：", entities)
-                            new_text = replace_pii(original, entities)
-                            if new_text != original:
-                                run.text = new_text
+                        # 合併整個段落的文字
+                        full_text = para.text
+                        if not full_text.strip():
+                            continue
+                        # 對完整段落進行實體偵測
+                        entities = detect_pii(full_text, language="en", score_threshold=0.6)
+                        if entities:
+                            # 生成替換後的完整文字
+                            # new_full_text = replace_pii(full_text, entities)
+                            # new_full_text = replace_entities(full_text, entities)
+                            new_full_text = replace_entities(                          # ★ (新)
+                                full_text,
+                                entities,
+                                chat_client=self.client,
+                                mapping=self.mapping,   # ★ 同一份映射
+                            )
+                            
+                            if new_full_text != full_text:
+                                # 清空所有 runs 並重新設置文字
+                                for run in para.runs:
+                                    run.text = ""
+                                
+                                # 將新文字設置到第一個 run
+                                if para.runs:
+                                    para.runs[0].text = new_full_text
+                                else:
+                                    para.add_run(new_full_text)
 
         # 儲存結果
         os.makedirs(os.path.dirname(output_path), exist_ok=True)

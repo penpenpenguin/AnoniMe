@@ -9,26 +9,31 @@ import subprocess  # 新增：啟動外部處理腳本
 from urllib.parse import urlparse, unquote  # 新增：解析 file:// URL
 import re  # 新增：解析 stdout 中的路徑
 from zipfile import ZipFile, ZIP_DEFLATED
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from PySide6.QtCore import QObject, Signal, Slot
+import traceback
 
 try:
     from file_handlers.txt_handler import TextHandler
 except ImportError:
     print("警告：無法導入 TextHandler")
+    traceback.print_exc()
 
 try:
     from file_handlers.docx_handler import DocxHandler
 except ImportError:
     print("警告：無法導入 DocxHandler")
+    traceback.print_exc()
 
 try:
     from file_handlers.pdf_handler import PdfHandler
 except ImportError:
     print("警告：無法導入 PdfHandler")
+    traceback.print_exc()
     
 
 try:
