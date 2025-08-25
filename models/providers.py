@@ -1,19 +1,60 @@
-import os
+# providers.py
+# 功能：統一管理不同的 ChatClient (Ollama / Qualcomm)，
+# 設定只讀取專案根目錄的 .env，不會再抓系統環境變數
+
 import requests
-import configparser
-from pathlib import Path
 from urllib.parse import urljoin
 from typing import Optional, Dict, Any, List
+from requests.exceptions import Timeout, HTTPError, RequestException
 
-PROVIDERS_DEBUG = os.getenv("PROVIDERS_DEBUG", "0").lower() not in ("", "0", "false", "no")
 
 
+# -------------------- 讀取 .env --------------------
+# 優先用 python-dotenv，沒有的話用簡單的自己 parser
+try:
+    from dotenv import dotenv_values   # pip install python-dotenv
+    DOTENV = dotenv_values(".env")
+    
+except Exception:
+    def _load_env_file(path: str = ".env") -> dict:
+        values = {}
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    if "=" in line:
+                        k, v = line.split("=", 1)
+                        values[k.strip()] = v.strip()
+        except FileNotFoundError:
+            pass
+        return values
+    DOTENV = _load_env_file()
+
+def _int(v, default):
+    try:
+        return int(str(v).strip())
+    except Exception:
+        return default
+
+REQ_TIMEOUT = _int(DOTENV.get("REQUEST_TIMEOUT", 60), 60)   # 預設 60 秒
+
+def _flag(v: str) -> bool:
+    """把字串轉成布林值，方便判斷 True/False"""
+    return str(v or "").lower() not in ("", "0", "false", "no")
+
+# 控制 debug 輸出
+PROVIDERS_DEBUG = _flag(DOTENV.get("PROVIDERS_DEBUG", "0"))
+
+# -------------------- ChatClient 介面 --------------------
 class ChatClient:
     def chat(self, system_prompt: str, user_prompt: str, **kwargs) -> str:
         raise NotImplementedError
 
-
+# -------------------- Ollama Client --------------------
 class OllamaClient(ChatClient):
+    """對接本機的 Ollama"""
     def __init__(self, base_url: str = "http://localhost:11434", model: str = "llama3.2:latest"):
         self.base_url = base_url.rstrip("/")
         self.model = model
@@ -28,23 +69,28 @@ class OllamaClient(ChatClient):
             ],
             "stream": bool(stream),
         }
-        resp = requests.post(url, json=payload, timeout=600)
+        resp = requests.post(url, json=payload, timeout=REQ_TIMEOUT)   # ← 用同一個 REQ_TIMEOUT
         resp.raise_for_status()
         return resp.json()["message"]["content"]
 
-
+# -------------------- RoundRobin ChatClient --------------------
 class RoundRobinChatClient(ChatClient):
-    """將多個 ChatClient 組成一個，依序輪替；遇到 429/Rate limit 會切到下一個。"""
+    """
+    包多個 client，輪流使用。
+    如果遇到 429 / Rate limit，就自動切換到下一個。
+    """
     def __init__(self, clients: List[ChatClient]):
-        assert clients, "RoundRobinChatClient 需要至少一個子 client"
+        assert clients, "RoundRobinChatClient 至少要有一個子 client"
         self.clients = clients
         self._i = 0
 
     def _is_rate_limit_err(self, e: Exception) -> bool:
-        msg = str(e).lower()
-        if "429" in msg or "rate limit" in msg or "too many requests" in msg:
+        # 明確處理 requests 的 Timeout
+        if isinstance(e, Timeout):
             return True
-        # 某些實作會掛在 e.response.status_code
+        msg = str(e).lower()
+        if any(x in msg for x in ("429", "rate limit", "too many requests")):
+            return True
         try:
             return getattr(getattr(e, "response", None), "status_code", 0) == 429
         except Exception:
@@ -58,120 +104,71 @@ class RoundRobinChatClient(ChatClient):
             cli = self.clients[idx]
             try:
                 if PROVIDERS_DEBUG:
-                    m = getattr(cli, "model", None)
-                    print(f"[providers] round-robin use model={m} idx={idx}")
+                    print(f"[providers] 使用模型 idx={idx}")
                 res = cli.chat(system_prompt, user_prompt, **kwargs)
-                # 下一次從下一個開始
+                # 成功後，下一次換下一個 client
                 self._i = (idx + 1) % n
                 return res
             except Exception as e:
                 last_err = e
                 if self._is_rate_limit_err(e):
                     if PROVIDERS_DEBUG:
-                        print(f"[providers] rate-limited on idx={idx}, try next client")
-                    # 換下個 client
+                        print(f"[providers] 模型 idx={idx} 被限流，換下一個")
                     self._i = (idx + 1) % n
                     continue
-                # 非限流錯誤，直接拋出
                 raise
-        # 全部都限流或失敗，拋最後一個錯
-        raise last_err or RuntimeError("All clients failed")
+        raise last_err or RuntimeError("所有 client 都失敗")
 
-
-# -------------------- Qualcomm / Core42 v2 client --------------------
-
-def _load_cli_token_and_url():
-    """Load defaults from ~/.qai_hub/client.ini if present.
-    [api]
-    api_token=...
-    api_url=https://playground.core42.ai/apis
-    """
-    ini = Path.home() / ".qai_hub" / "client.ini"
-    token = ""
-    api_url = ""
-    if ini.exists():
-        cp = configparser.ConfigParser()
-        cp.read(ini)
-        token = cp.get("api", "api_token", fallback="").strip()
-        api_url = cp.get("api", "api_url", fallback="").strip().rstrip("/")
-    return token, api_url
-
-
+# -------------------- Qualcomm Client --------------------
 class QualcommAiHubClient(ChatClient):
-    """
-    Compatible with Core42/Qualcomm AI Inference Suite (OpenAPI servers: "/apis")
-
-    ENV VARIABLES (recommended):
-      PROVIDER=qualcomm
-      AIHUB_API_KEY = <token or JWT>
-      AIHUB_FULL_URL = "https://playground.core42.ai/apis"   # BASE, not the endpoint
-      AIHUB_AUTH_MODE = bearer|token|x-api-key                  # default: bearer
-      AIHUB_MODEL = Llama-3.1-8B                                # or any available model
-
-    Back-compat (optional):
-      AIHUB_ENDPOINT + AIHUB_CHAT_PATH (discouraged). If present, they are joined.
-    """
-
+    """對接 Core42 / Qualcomm AI Hub"""
     def __init__(
         self,
         api_key: str,
-        base_or_endpoint: Optional[str] = None,
-        model: Optional[str] = None,
-        auth_mode: Optional[str] = None,
-        chat_path: Optional[str] = None,
+        base_or_endpoint: Optional[str] = None,   # 例如 https://playground.core42.ai/apis
+        model: str = "Llama-3.1-8B",
+        auth_mode: str = "bearer",                # bearer | token | x-api-key
+        chat_path: str = "/v2/chat/completions",  # 預設 v2 路徑
     ):
         if not api_key:
-            raise RuntimeError("AIHUB_API_KEY is required")
+            raise RuntimeError("AIHUB_API_KEY 不可為空")
+
         self.api_key = api_key.strip()
+        self.model = model.strip()
+        self.auth_mode = auth_mode.strip().lower()
+        self.chat_path = chat_path.strip()
 
-        # Choose model
-        self.model = (model or os.getenv("AIHUB_MODEL") or "Llama-3.1-8B").strip()
-
-        # Auth mode: use AIHUB_AUTH_MODE (not AIHUB_AUTH) to avoid confusion with Authorization header
-        self.auth_mode = (auth_mode or os.getenv("AIHUB_AUTH_MODE") or "bearer").strip().lower()
-
-        # Path handling: prefer v2 per OpenAPI; allow override for legacy
-        self.chat_path = (chat_path or os.getenv("AIHUB_CHAT_PATH") or "/v2/chat/completions").strip()
-
-        # Base URL / endpoint handling
-        # priority: explicit base_or_endpoint -> AIHUB_FULL_URL -> AIHUB_ENDPOINT -> default base
-        raw = (base_or_endpoint or os.getenv("AIHUB_FULL_URL") or os.getenv("AIHUB_ENDPOINT") or "").strip().rstrip("/")
+        # endpoint 設定
+        raw = (base_or_endpoint or "").strip().rstrip("/")
         self._absolute_endpoint: Optional[str] = None
-
         if raw:
-            # If it already contains /v2/, assume it's the full endpoint (absolute)
-            if "/v2/" in raw:
+            if "/v2/" in raw:    # 已經是完整 endpoint
                 self._absolute_endpoint = raw
                 self.base = None
             else:
-                self.base = raw  # treat as BASE (e.g., https://host/apis)
+                self.base = raw  # base，例如 https://host/apis
         else:
-            self.base = "https://playground.core42.ai/apis"  # sensible default BASE
+            self.base = "https://playground.core42.ai/apis"
 
-    # -------------------- helpers --------------------
     def _headers(self) -> Dict[str, str]:
         h = {"Content-Type": "application/json"}
         if self.auth_mode == "x-api-key":
             h["x-api-key"] = self.api_key
         elif self.auth_mode == "token":
             h["Authorization"] = f"Token {self.api_key}"
-        else:  # bearer
+        else:
             h["Authorization"] = f"Bearer {self.api_key}"
         return h
 
     def _endpoint_url(self) -> str:
         if self._absolute_endpoint:
             return self._absolute_endpoint
-        # join base + /v2/chat/completions (or custom path)
         base = (self.base or "https://playground.core42.ai/apis").rstrip("/") + "/"
         path = self.chat_path.lstrip("/")
         return urljoin(base, path)
 
-    def _mask(self, token: str) -> str:
-        return (token[:6] + "…" + token[-4:]) if len(token) > 12 else "***"
-
-    # -------------------- public APIs --------------------
-    def chat(self, system_prompt: str, user_prompt: str, stream: bool = False, extra_params: Optional[Dict[str, Any]] = None) -> str:
+    def chat(self, system_prompt: str, user_prompt: str, stream: bool = False,
+            extra_params: Optional[Dict[str, Any]] = None) -> str:
         url = self._endpoint_url()
         payload: Dict[str, Any] = {
             "model": self.model,
@@ -184,39 +181,49 @@ class QualcommAiHubClient(ChatClient):
         if extra_params:
             payload.update(extra_params)
 
-        print(f"[AIHUB] POST {url} model={self.model} auth_mode={self.auth_mode} token={self._mask(self.api_key)}")
-        resp = requests.post(url, json=payload, headers=self._headers(), timeout=600)
+        if PROVIDERS_DEBUG:
+            print(f"[AIHUB] POST {url} model={self.model}")
+
         try:
+            resp = requests.post(
+                url, json=payload, headers=self._headers(), timeout=REQ_TIMEOUT
+            )
             resp.raise_for_status()
-        except requests.HTTPError as e:
-            raise RuntimeError(f"AI Hub HTTP {resp.status_code}: {resp.text}") from e
+        except Timeout as e:
+            # 讓 RoundRobin 偵測到是 timeout，換下一個 client
+            raise RuntimeError(f"timeout after {REQ_TIMEOUT}s") from e
+        except HTTPError as e:
+            # 附帶狀態碼與文字，除 429 以外會往外拋
+            status = getattr(resp, "status_code", None)
+            text = getattr(resp, "text", "")
+            raise RuntimeError(f"AI Hub HTTP {status}: {text}") from e
+        except RequestException as e:
+            # 其他 requests 例外
+            raise RuntimeError(f"AI Hub request failed: {e}") from e
 
         data = resp.json()
-        # OpenAI-like / Core42-like schema
-        if isinstance(data, dict):
-            if "choices" in data and data["choices"]:
-                c0 = data["choices"][0]
-                if isinstance(c0, dict):
-                    msg = c0.get("message")
-                    if isinstance(msg, dict) and "content" in msg:
-                        return msg["content"]
-                    if "text" in c0:
-                        return c0["text"]
-            # some providers flatten
-            if isinstance(data.get("message"), dict) and "content" in data["message"]:
-                return data["message"]["content"]
-            if "output_text" in data:
-                return data["output_text"]
-        raise RuntimeError(f"Unexpected AI Hub response schema: {data}")
+        # 解析回傳
+        if "choices" in data and data["choices"]:
+            c0 = data["choices"][0]
+            if isinstance(c0, dict):
+                msg = c0.get("message")
+                if isinstance(msg, dict) and "content" in msg:
+                    return msg["content"]
+                if "text" in c0:
+                    return c0["text"]
+        if isinstance(data.get("message"), dict) and "content" in data["message"]:
+            return data["message"]["content"]
+        if "output_text" in data:
+            return data["output_text"]
 
+        raise RuntimeError(f"無法解析 AI Hub 回傳格式: {data}")
 
-# -------------------- factory --------------------
-
+# -------------------- 工廠方法 --------------------
 def _build_qualcomm_client_for_model(model: str) -> ChatClient:
-    api_key = os.environ.get("AIHUB_API_KEY", "").strip()
-    base_or_endpoint = os.environ.get("AIHUB_FULL_URL", "").strip()
-    auth_mode = os.environ.get("AIHUB_AUTH_MODE", "bearer").strip().lower()
-    chat_path = os.environ.get("AIHUB_CHAT_PATH", "apis/v2/chat/completions").strip()
+    api_key = (DOTENV.get("AIHUB_API_KEY") or "").strip()
+    base_or_endpoint = (DOTENV.get("AIHUB_FULL_URL") or DOTENV.get("AIHUB_ENDPOINT") or "").strip()
+    auth_mode = (DOTENV.get("AIHUB_AUTH_MODE") or "bearer").strip().lower()
+    chat_path = (DOTENV.get("AIHUB_CHAT_PATH") or "/v2/chat/completions").strip()
     return QualcommAiHubClient(
         api_key=api_key,
         base_or_endpoint=base_or_endpoint,
@@ -226,29 +233,24 @@ def _build_qualcomm_client_for_model(model: str) -> ChatClient:
     )
 
 def get_chat_client() -> ChatClient:
-    provider = os.environ.get("PROVIDER", "ollama").strip().lower()
+    """根據 .env 的 PROVIDER 來建立對應的 client"""
+    provider = (DOTENV.get("PROVIDER") or "ollama").strip().lower()
 
     if provider == "qualcomm":
-        # 支援多模型清單：AIHUB_MODELS=llama3-70b,Llama-3.1-8B,openai/gpt-oss-20b
-        raw_models = os.environ.get("AIHUB_MODELS", "").strip()
+        # 支援多模型清單：AIHUB_MODELS=llama3-70b,Llama-3.1-8B
+        raw_models = (DOTENV.get("AIHUB_MODELS") or "").strip()
         if raw_models:
             models = [m.strip() for m in raw_models.split(",") if m.strip()]
         else:
-            # 單一模型仍相容 AIHUB_MODEL
-            models = [os.environ.get("AIHUB_MODEL", "Llama-3.1-8B").strip()]
+            models = [(DOTENV.get("AIHUB_MODEL") or "Llama-3.1-8B").strip()]
 
-        # 避免視覺模型干擾文字任務
+        # 過濾掉 vision 模型
         models = [m for m in models if "vision" not in m.lower()]
 
         clients = [_build_qualcomm_client_for_model(m) for m in models]
-        if PROVIDERS_DEBUG:
-            print("[providers] build qualcomm clients:", [getattr(c, "model", None) for c in clients])
+        return clients[0] if len(clients) == 1 else RoundRobinChatClient(clients)
 
-        if len(clients) == 1:
-            return clients[0]
-        return RoundRobinChatClient(clients)
-
-    # default: ollama
-    base = os.environ.get("OLLAMA_URL", "http://localhost:11434").strip()
-    model = os.environ.get("OLLAMA_MODEL", "llama3.2:latest").strip()
+    # 預設：Ollama
+    base = (DOTENV.get("OLLAMA_URL") or "http://localhost:11434").strip()
+    model = (DOTENV.get("OLLAMA_MODEL") or "llama3.2:latest").strip()
     return OllamaClient(base_url=base, model=model)
