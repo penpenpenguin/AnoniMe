@@ -43,7 +43,7 @@ def register_custom_entities(analyzer: AnalyzerEngine):
     tw_ubn_pattern = Pattern(
         name="tw_ubn_pattern",
         regex=r"\b\d{8}\b",
-        score=0.90  # base score放低，通過校驗後再加權
+        score=0.95 # 一開始就提高基礎分數
     )
 
     # ==== NEW: Taiwan Mobile (行動電話) ====
@@ -135,19 +135,19 @@ def register_custom_entities(analyzer: AnalyzerEngine):
     # 排除 09 開頭避免吃到手機
     tw_home_patterns = [
         Pattern(
-            name="tw_home_basic",
-            regex=r"\b(?!09)\d(?:0\d{1,3}|\d)\b",  # 防止與其他數字干擾的錨點（後面再具體化）
-            score=0.01
-        ),
-        Pattern(
             name="tw_home_parenthesized",
             regex=r"\(\s?0\d{1,3}\s?\)\s?\d{6,8}\b",
             score=0.80
         ),
         Pattern(
             name="tw_home_dash_or_space",
-            regex=r"\b0(?!9)\d{1,3}[-\s]?\d{6,8}\b",
+            regex=r"\b0(?!9)\d{1,3}[-\s]\d{6,8}\b",  # 要求必須有分隔符
             score=0.80
+        ),
+        Pattern(
+            name="tw_home_no_separator_9_10_digits",  # 新增：純數字但必須9-10位
+            regex=r"\b0(?!9)\d{8,9}\b",  # 9-10位數字，排除8位
+            score=0.75
         ),
         Pattern(
             name="tw_home_intl",
@@ -220,10 +220,11 @@ def register_custom_entities(analyzer: AnalyzerEngine):
 
             def enhance_confidence(self, result: RecognizerResult, text: str) -> RecognizerResult:
                 # 通過校驗 → 拉到高分；未通過 → 壓低
-                if validate_tw_ubn(text[result.start:result.end]):
-                    result.score = max(result.score, 0.90)
+                ubn_text = text[result.start:result.end]
+                if validate_tw_ubn(ubn_text):
+                    result.score = 0.98  # 校驗通過給更高分數
                 else:
-                    result.score = min(result.score, 0.20)
+                    result.score = 0.15  # 校驗失敗給很低分數
                 return result
 
             def analyze(self, text: str, entities: List[str], nlp_artifacts=None) -> List[RecognizerResult]:

@@ -18,6 +18,64 @@ def fake_ubn():
     # 8 位數統編
     return "".join(random.choices(string.digits, k=8))
 
+def is_likely_person_name(text: str) -> bool:
+    """
+    驗證文字是否真的像人名
+    """
+    text = text.strip().lower()
+    
+    # 明顯不是人名的關鍵字
+    non_person_keywords = [
+        'email', 'mail', 'address', 'phone', 'number', 'id', 'card',
+        'password', 'user', 'admin', 'account', 'login', 'register',
+        'submit', 'send', 'click', 'here', 'link', 'url', 'http',
+        'www', 'com', 'org', 'net', 'gov', 'edu',
+        'file', 'document', 'pdf', 'doc', 'txt',
+        'company', 'corporation', 'inc', 'ltd', 'llc',
+        'street', 'avenue', 'road', 'drive', 'lane',
+        'city', 'state', 'country', 'zip', 'postal',
+        'contact', 'information', 'details', 'form',
+        'name', 'first', 'last', 'full', 'given'  # 表單欄位名稱
+    ]
+    
+    # 檢查是否包含明顯不是人名的關鍵字
+    for keyword in non_person_keywords:
+        if keyword in text:
+            return False
+    
+    # 檢查是否包含數字（大部分人名不包含數字）
+    if any(char.isdigit() for char in text):
+        return False
+    
+    # 檢查是否包含特殊符號（除了空格、連字符、撇號、點）
+    allowed_chars = set('abcdefghijklmnopqrstuvwxyz -\'.')
+    if not all(char in allowed_chars for char in text):
+        return False
+    
+    # 檢查長度（太短或太長可能不是人名）
+    if len(text) < 2 or len(text) > 50:
+        return False
+    
+    # 檢查是否全部大寫（可能是縮寫或代碼）
+    if text.isupper() and len(text) > 5:
+        return False
+    
+    # 檢查是否為純粹的表單欄位名稱
+    form_field_patterns = [
+        r'^(first|last|full)\s*(name)?$',
+        r'^name\s*(field)?$',
+        r'^email\s*(address)?$',
+        r'^phone\s*(number)?$',
+        r'^contact\s*(info|information)?$'
+    ]
+    
+    for pattern in form_field_patterns:
+        if re.match(pattern, text):
+            return False
+    
+    return True
+    
+
 def replace_pii(text, analyzer_results):
     # 將 analyzer_results 轉換為 RecognizerResult 物件
     recognizer_results = [
@@ -66,7 +124,7 @@ def replace_pii(text, analyzer_results):
             # 定義相對時間關鍵詞（更完整的列表）
             relative_time_keywords = {
                 # 英文相對時間 - 基本
-                "today", "tomorrow", "yesterday", "now", "tonight", "td", "tmr", "rn",
+                "today", "tomorrow", "yesterday", "now", "tonight", 
                 # 英文相對時間 - 時段
                 "this morning", "this afternoon", "this evening", "this noon",
                 "last night", "yesterday morning", "yesterday afternoon", "yesterday evening",
@@ -133,7 +191,13 @@ def replace_pii(text, analyzer_results):
             new_value = fake.credit_card_number()
 
         elif et == "PERSON":
-            new_value = fake.name()
+            # 驗證是否真的是人名
+            if is_likely_person_name(detected_text):
+                new_value = fake.name()
+                print(f"Valid person name detected: {detected_text} -> {new_value}")
+            else:
+                new_value = detected_text  # 保留原始文字
+                print(f"Invalid person name detected, keeping original: {detected_text}")
 
         elif et == "LOCATION":
             new_value = fake.address()
