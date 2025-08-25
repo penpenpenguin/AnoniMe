@@ -84,7 +84,7 @@ Window {
 
         onStatusChanged: {
             if (status === Loader.Error) {
-                console.log("Loader Error:", errorString())
+                console.log("Loader Error:", source)
             }
         }
     }
