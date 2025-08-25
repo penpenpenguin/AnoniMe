@@ -721,9 +721,9 @@ Item {
                                 width: Math.min(nameText.implicitWidth + 24, 120)
                                 height: 36
                                 radius: 18
-                                color: checked ? Qt.rgba(0.4, 0.99, 0.95, 0.2) : Qt.rgba(0.07, 0.08, 0.1, 0.3)
+                                color: checked ? Qt.rgba(0.0, 1.0, 0.9, 0.4) : Qt.rgba(0.15, 0.2, 0.25, 0.8)
                                 border.width: 2
-                                border.color: checked ? "#66FCF1" : Qt.rgba(0.4, 0.99, 0.95, 0.4)
+                                border.color: checked ? "#00FFE6" : Qt.rgba(0.4, 0.6, 0.7, 0.8)
                                 
                                 Behavior on color { ColorAnimation { duration: 200 } }
                                 Behavior on border.color { ColorAnimation { duration: 200 } }
@@ -745,7 +745,7 @@ Item {
                                     text: nameOption.text
                                     font.pixelSize: 12
                                     font.weight: checked ? Font.Bold : Font.Medium
-                                    color: checked ? "#66FCF1" : "#FFFFFF"
+                                    color: checked ? "#00FFE6" : "#E0E0E0"
                                     Behavior on color { ColorAnimation { duration: 200 } }
                                 }
                                 
@@ -772,9 +772,9 @@ Item {
                                 width: Math.min(emailText.implicitWidth + 24, 120)
                                 height: 36
                                 radius: 18
-                                color: checked ? Qt.rgba(0.4, 0.99, 0.95, 0.2) : Qt.rgba(0.07, 0.08, 0.1, 0.3)
+                                color: checked ? Qt.rgba(0.0, 1.0, 0.9, 0.4) : Qt.rgba(0.15, 0.2, 0.25, 0.8)
                                 border.width: 2
-                                border.color: checked ? "#66FCF1" : Qt.rgba(0.4, 0.99, 0.95, 0.4)
+                                border.color: checked ? "#00FFE6" : Qt.rgba(0.4, 0.6, 0.7, 0.8)
                                 
                                 Behavior on color { ColorAnimation { duration: 200 } }
                                 Behavior on border.color { ColorAnimation { duration: 200 } }
@@ -796,7 +796,7 @@ Item {
                                     text: emailOption.text
                                     font.pixelSize: 12
                                     font.weight: checked ? Font.Bold : Font.Medium
-                                    color: checked ? "#66FCF1" : "#FFFFFF"
+                                    color: checked ? "#00FFE6" : "#E0E0E0"
                                     Behavior on color { ColorAnimation { duration: 200 } }
                                 }
                                 
@@ -823,9 +823,9 @@ Item {
                                 width: Math.min(phoneText.implicitWidth + 24, 120)
                                 height: 36
                                 radius: 18
-                                color: checked ? Qt.rgba(0.4, 0.99, 0.95, 0.2) : Qt.rgba(0.07, 0.08, 0.1, 0.3)
+                                color: checked ? Qt.rgba(0.0, 1.0, 0.9, 0.4) : Qt.rgba(0.15, 0.2, 0.25, 0.8)
                                 border.width: 2
-                                border.color: checked ? "#66FCF1" : Qt.rgba(0.4, 0.99, 0.95, 0.4)
+                                border.color: checked ? "#00FFE6" : Qt.rgba(0.4, 0.6, 0.7, 0.8)
                                 
                                 Behavior on color { ColorAnimation { duration: 200 } }
                                 Behavior on border.color { ColorAnimation { duration: 200 } }
@@ -847,7 +847,7 @@ Item {
                                     text: phoneOption.text
                                     font.pixelSize: 12
                                     font.weight: checked ? Font.Bold : Font.Medium
-                                    color: checked ? "#66FCF1" : "#FFFFFF"
+                                    color: checked ? "#00FFE6" : "#E0E0E0"
                                     Behavior on color { ColorAnimation { duration: 200 } }
                                 }
                                 
@@ -874,9 +874,9 @@ Item {
                                 width: Math.min(addressText.implicitWidth + 24, 120)
                                 height: 36
                                 radius: 18
-                                color: checked ? Qt.rgba(0.4, 0.99, 0.95, 0.2) : Qt.rgba(0.07, 0.08, 0.1, 0.3)
+                                color: checked ? Qt.rgba(0.0, 1.0, 0.9, 0.4) : Qt.rgba(0.15, 0.2, 0.25, 0.8)
                                 border.width: 2
-                                border.color: checked ? "#66FCF1" : Qt.rgba(0.4, 0.99, 0.95, 0.4)
+                                border.color: checked ? "#00FFE6" : Qt.rgba(0.4, 0.6, 0.7, 0.8)
                                 
                                 Behavior on color { ColorAnimation { duration: 200 } }
                                 Behavior on border.color { ColorAnimation { duration: 200 } }
@@ -898,7 +898,7 @@ Item {
                                     text: addressOption.text
                                     font.pixelSize: 12
                                     font.weight: checked ? Font.Bold : Font.Medium
-                                    color: checked ? "#66FCF1" : "#FFFFFF"
+                                    color: checked ? "#00FFE6" : "#E0E0E0"
                                     Behavior on color { ColorAnimation { duration: 200 } }
                                 }
                                 
@@ -1019,9 +1019,9 @@ Item {
                                 width: Math.min(birthdayText.implicitWidth + 20, 100)
                                 height: 32
                                 radius: 16
-                                color: checked ? Qt.rgba(0.4, 0.99, 0.95, 0.2) : Qt.rgba(0.07, 0.08, 0.1, 0.3)
+                                color: checked ? Qt.rgba(0.0, 1.0, 0.9, 0.35) : Qt.rgba(0.15, 0.2, 0.25, 0.7)
                                 border.width: 1
-                                border.color: checked ? "#66FCF1" : Qt.rgba(0.4, 0.99, 0.95, 0.4)
+                                border.color: checked ? "#00FFE6" : Qt.rgba(0.4, 0.6, 0.7, 0.7)
                                 
                                 Behavior on color { ColorAnimation { duration: 200 } }
                                 Behavior on border.color { ColorAnimation { duration: 200 } }
@@ -1032,7 +1032,7 @@ Item {
                                     text: birthdayOption.text
                                     font.pixelSize: 10
                                     font.weight: checked ? Font.Bold : Font.Medium
-                                    color: checked ? "#66FCF1" : "#FFFFFF"
+                                    color: checked ? "#00FFE6" : "#E0E0E0"
                                     Behavior on color { ColorAnimation { duration: 200 } }
                                 }
                                 
@@ -1059,9 +1059,9 @@ Item {
                                 width: Math.min(idText.implicitWidth + 20, 100)
                                 height: 32
                                 radius: 16
-                                color: checked ? Qt.rgba(0.4, 0.99, 0.95, 0.2) : Qt.rgba(0.07, 0.08, 0.1, 0.3)
+                                color: checked ? Qt.rgba(0.0, 1.0, 0.9, 0.35) : Qt.rgba(0.15, 0.2, 0.25, 0.7)
                                 border.width: 1
-                                border.color: checked ? "#66FCF1" : Qt.rgba(0.4, 0.99, 0.95, 0.4)
+                                border.color: checked ? "#00FFE6" : Qt.rgba(0.4, 0.6, 0.7, 0.7)
                                 
                                 Behavior on color { ColorAnimation { duration: 200 } }
                                 Behavior on border.color { ColorAnimation { duration: 200 } }
@@ -1072,7 +1072,7 @@ Item {
                                     text: idOption.text
                                     font.pixelSize: 10
                                     font.weight: checked ? Font.Bold : Font.Medium
-                                    color: checked ? "#66FCF1" : "#FFFFFF"
+                                    color: checked ? "#00FFE6" : "#E0E0E0"
                                     Behavior on color { ColorAnimation { duration: 200 } }
                                 }
                                 
@@ -1099,9 +1099,9 @@ Item {
                                 width: Math.min(companyText.implicitWidth + 20, 100)
                                 height: 32
                                 radius: 16
-                                color: checked ? Qt.rgba(0.4, 0.99, 0.95, 0.2) : Qt.rgba(0.07, 0.08, 0.1, 0.3)
+                                color: checked ? Qt.rgba(0.0, 1.0, 0.9, 0.35) : Qt.rgba(0.15, 0.2, 0.25, 0.7)
                                 border.width: 1
-                                border.color: checked ? "#66FCF1" : Qt.rgba(0.4, 0.99, 0.95, 0.4)
+                                border.color: checked ? "#00FFE6" : Qt.rgba(0.4, 0.6, 0.7, 0.7)
                                 
                                 Behavior on color { ColorAnimation { duration: 200 } }
                                 Behavior on border.color { ColorAnimation { duration: 200 } }
@@ -1112,7 +1112,7 @@ Item {
                                     text: companyOption.text
                                     font.pixelSize: 10
                                     font.weight: checked ? Font.Bold : Font.Medium
-                                    color: checked ? "#66FCF1" : "#FFFFFF"
+                                    color: checked ? "#00FFE6" : "#E0E0E0"
                                     Behavior on color { ColorAnimation { duration: 200 } }
                                 }
                                 
@@ -1139,9 +1139,9 @@ Item {
                                 width: Math.min(bankText.implicitWidth + 20, 100)
                                 height: 32
                                 radius: 16
-                                color: checked ? Qt.rgba(0.4, 0.99, 0.95, 0.2) : Qt.rgba(0.07, 0.08, 0.1, 0.3)
+                                color: checked ? Qt.rgba(0.0, 1.0, 0.9, 0.35) : Qt.rgba(0.15, 0.2, 0.25, 0.7)
                                 border.width: 1
-                                border.color: checked ? "#66FCF1" : Qt.rgba(0.4, 0.99, 0.95, 0.4)
+                                border.color: checked ? "#00FFE6" : Qt.rgba(0.4, 0.6, 0.7, 0.7)
                                 
                                 Behavior on color { ColorAnimation { duration: 200 } }
                                 Behavior on border.color { ColorAnimation { duration: 200 } }
@@ -1152,7 +1152,7 @@ Item {
                                     text: bankOption.text
                                     font.pixelSize: 10
                                     font.weight: checked ? Font.Bold : Font.Medium
-                                    color: checked ? "#66FCF1" : "#FFFFFF"
+                                    color: checked ? "#00FFE6" : "#E0E0E0"
                                     Behavior on color { ColorAnimation { duration: 200 } }
                                 }
                                 
