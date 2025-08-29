@@ -153,10 +153,9 @@ def _rasterize_pdf(pdf_path: str, limit_pages: int = 10, dpi: int = 144):
 
 
 class TestBackend(QObject):
-    """測試後端：接受 QML 上傳的檔案並回傳可顯示的預覽文字。
+    """正式後端：接受 QML 上傳的檔案與選項，回傳真實處理結果。
 
-    介面完全比照 main.py 的 Backend，讓前端可以直接替換測試後端。
-    支援 txt/md/log、docx、pdf，.doc 以 Windows COM（若可用）嘗試；否則回覆提示。
+    介面完全比照 main.py 的 Backend，直接處理前端傳遞的檔案與選項，回傳 originalText、maskedText 等真實資料。
     """
 
     filesChanged = Signal(list)
@@ -209,6 +208,7 @@ class TestBackend(QObject):
     # 選項 -----------------------------------------------------
     @Slot('QStringList')
     def setOptions(self, opts):
+        print(f"[後端] setOptions 接收到: {opts}")  # 參考點，確認接收 list
         self._options = [o for o in opts if o in OPTION_META]
 
     @Slot(result='QStringList')
@@ -224,8 +224,7 @@ class TestBackend(QObject):
     @Slot()
     def processFiles(self):
         """
-        僅改『預覽』：先讓 Backend 產生去識別後檔案，再統一轉 PDF（不依賴外部字型），
-        最後轉頁圖回傳給前端。核心處理流程不變。
+        正式後端：依據前端傳遞的檔案與選項，回傳真實處理結果。
         """
         from app.main import Backend
         backend = Backend()
@@ -234,40 +233,32 @@ class TestBackend(QObject):
         results = []
         for src in self._files:
             name = os.path.basename(src)
-            if name.startswith("~$"):  # 跳過 Word 鎖定暫存檔
+            if name.startswith("~$"):
                 continue
             ext = Path(src).suffix.lower()
             ftype = "pdf" if ext == ".pdf" else "docx" if ext == ".docx" else "text"
 
             try:
-                out_path, _ = backend._process_file_with_deidentification(src, ftype, str(APP_OUTPUT_DIR))
+                # 直接呼叫正式後端，取得原文與去識別化結果
+                original_text, masked_text, out_path = backend.process_file(src, self._options)
                 if not out_path or not os.path.isfile(out_path):
                     raise RuntimeError(f"後端未回傳有效輸出檔：{out_path}")
 
-                pdf_path = _ensure_pdf_for_preview(out_path)   # 不用任何字型檔
-                page_urls = _rasterize_pdf(pdf_path)
                 results.append({
                     "fileName": os.path.basename(out_path),
-                    "type": "pdf",
-                    "originalText": "",
-                    "maskedText": "",
-                    "embedData": {
-                        "viewType": "pdf",
-                        "pageImages": page_urls,
-                        "fileName": os.path.basename(out_path),
-                        "pdfPath": Path(pdf_path).as_uri(),
-                        "pageCount": len(page_urls),
-                    },
+                    "type": ftype,
+                    "originalText": original_text,
+                    "maskedText": masked_text,
                     "fileUrl": Path(out_path).as_uri(),
-                })      
+                })
             except Exception as e:
                 results.append({
                     "fileName": name, "type": ftype,
                     "originalText": "", "maskedText": "",
-                    "embedData": {"viewType": "error", "error": str(e)},
+                    "error": str(e),
                 })
-                        
-        self._last_results = results               
+
+        self._last_results = results
         self.resultsReady.emit(json.dumps(results, ensure_ascii=False))
 
     # 打包全部處理後檔案成 ZIP

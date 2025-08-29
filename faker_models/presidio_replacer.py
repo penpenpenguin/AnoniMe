@@ -27,7 +27,7 @@ def fake_ubn():
     # 8 位數統編
     return "".join(random.choices(string.digits, k=8))
 
-def replace_pii(text, analyzer_results):
+def replace_pii(text, analyzer_results, optionslist=None):
     # 將 analyzer_results 轉換為 RecognizerResult 物件
     recognizer_results = [
         RecognizerResult(
@@ -118,6 +118,13 @@ def replace_pii(text, analyzer_results):
             operators[et] = OperatorConfig("replace", {"new_value": text[res.start:res.end]})
 
     # 傳遞 recognizer_results 而不是原始的 analyzer_results
+    # optionslist: 可選的顯示文字陣列，來自 UI 勾選選項的 text 屬性
+    try:
+        if optionslist:
+            print("replace_pii called with options:", optionslist)
+    except Exception:
+        pass
+
     return anonymizer.anonymize(
         text=text,
         analyzer_results=recognizer_results,

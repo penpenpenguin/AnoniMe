@@ -1,13 +1,13 @@
 Curriculum Vitae
 Personal Information
 Name: William Chen
-Date of Birth: 1984-02-24
-Phone: 0981728056
-Mark: anon931661@example.com
+Date of Birth: 1988-05-21
+Phone: (382)698-3892x47166
+Email: user@example.com
 Address: 123 Main Street, Chicago, IL 60605
 Social Security Number: 987-65-4321
 Education
-Institute State College - M.S. in Information Tech (1986-03-24)
+University of Illinois - B.S. in Computer Science (2006-2010)
 Experience
-ABC Technologies - Software Engineer (2021-04-18)
-ABC Risk Management - Cybersecurity Expert (2010-05-12)
+ABC Technologies - Software Engineer (2010-2015)
+XYZ Security Consulting - Cybersecurity Consultant (2015-2020)
