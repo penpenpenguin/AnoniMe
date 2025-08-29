@@ -1,82 +1,117 @@
-# muiltAI_pii_replace.py
-import json, os, hashlib, random, string, re
+# muiltAI_pii_replace.py  — 改用 KuwaClient，不再載本地 HF 模型
+import os, json, hashlib
 from typing import List, Dict, Tuple, Optional
+
+# 你原本的 presidio 替換器
 from faker_models.presidio_replacer_plus import replace_pii as _presidio_replace
 
-from transformers import pipeline
-import torch
+# 讀 .env（若沒有也能跑，只是拿不到環境變數）
+try:
+    from dotenv import load_dotenv, find_dotenv
+    load_dotenv(find_dotenv())
+except Exception:
+    pass
 
-# ----------- Llama 模型初始化 -----------
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+# ====== Kuwa Client（依你要求的匯入方式）======
+import sys
+sys.path.append(r"C:\kuwa\GenAI OS\src\library\client\src\kuwa")
+from client.base import KuwaClient  # noqa: E402
 
-model_id = "meta-llama/Llama-3.2-1B-Instruct"
 
-use_cuda = torch.cuda.is_available()
-dtype = torch.bfloat16 if use_cuda else torch.float32  # GPU: bf16 / CPU: fp32（CPU 不要用 bf16）
-device = 0 if use_cuda else -1
+# ---------- 用 Kuwa 的聊天客戶端（同步介面，配合 _safe_chat 使用）----------
+class KuwaChatClient:
+    """
+    用 Kuwa 的 OpenAI-Compatible 端點做一次問答，回傳文字。
+    會使用 .env 的 KUWA_BASE_URL / KUWA_API_KEY / KUWA_MODEL。
+    """
 
-tok = AutoTokenizer.from_pretrained(model_id)
-model = AutoModelForCausalLM.from_pretrained(
-    model_id,
-    torch_dtype=dtype,
-    device_map="auto" if use_cuda else None,   # CPU 就別用 device_map
-)
+    def __init__(
+        self,
+        base_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+        temperature: float = 0.8,
+        max_tokens: int = 64,
+    ):
+        self.base_url = (base_url or os.getenv("KUWA_BASE_URL", "")).rstrip("/")
+        self.api_key = api_key or os.getenv("KUWA_API_KEY", "")
+        self.model = model or os.getenv("KUWA_MODEL", "")
+        self.temperature = temperature
+        self.max_tokens = max_tokens
 
-pipe = pipeline(
-    "text-generation",
-    model=model,
-    tokenizer=tok,
-    device=device,
-)
+        if not self.base_url or not self.api_key:
+            raise RuntimeError(
+                "缺少 KUWA_BASE_URL / KUWA_API_KEY。請在 .env 依 Kuwa 介面填寫完整 Base URL（含埠與 /v1*）。"
+            )
+        if not self.model:
+            raise RuntimeError("缺少 KUWA_MODEL，請先用 /models 清單對到正確 id 再填。")
 
-class LlamaChatClient:
+        # KuwaClient 會幫你打到 <base_url>/chat/completions
+        self._client = KuwaClient(
+            base_url=self.base_url,
+            model=self.model,          # 預設模型
+            auth_token=self.api_key,
+        )
+
     def chat(self, system_prompt: str, user_prompt: str) -> str:
+        """
+        回傳純文字。非串流（streaming=False），方便同步流程。
+        KuwaClient 若回字串就直接用；若回 dict/obj 嘗試取 content。
+        """
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
-        # 轉成可生成的文字（避免直接丟 list）
-        prompt_text = pipe.tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
+        # 有些版本 chat_complete 支援 streaming 參數；這裡關閉串流，要求一次回覆
+        resp = self._client.chat_complete(
+            messages=messages,
+            streaming=False,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            model=self.model,  # 明確指定，避免 client 預設未對齊
         )
 
-        out = pipe(
-            prompt_text,
-            max_new_tokens=32,          # 一行足夠
-            do_sample=True,             # 讓 temperature/top_p 生效
-            temperature=0.3,            # 假值要多樣但別太野
-            top_p=0.9,
-            return_full_text=False,
-            eos_token_id=tok.eos_token_id,
-            pad_token_id=tok.eos_token_id,
-            max_time=6.0,
-        )
-        text = (out[0]["generated_text"] if out else "").strip()
+        # 兼容不同回傳格式
+        if isinstance(resp, str):
+            text = resp
+        elif isinstance(resp, dict):
+            text = (
+                resp.get("content")
+                or resp.get("message")
+                or (resp.get("choices", [{}])[0].get("message", {}) or {}).get("content", "")
+                or ""
+            )
+        else:
+            # 某些版本可能回物件，盡量取 content 屬性
+            text = getattr(resp, "content", "") or str(resp)
+
+        text = (text or "").strip()
         # 只取第一個非空行，避免多餘說明
         for line in text.splitlines():
             line = line.strip()
             if line:
                 return line
-        return ""
+        return text
 
 
-# ----------- safe chat 包裝 -----------
+# ----------- safe chat 包裝（原樣保留）-----------
 def _safe_chat(chat_client, system_prompt: str, user_prompt: str, batch, timeout_sec: int = 10) -> str:
     import time
     t0 = time.time()
     try:
-        out = chat_client.chat(system_prompt, user_prompt)  
+        out = chat_client.chat(system_prompt, user_prompt)
         if time.time() - t0 > timeout_sec:
             raise TimeoutError(f"model timeout after {timeout_sec}s")
         return out if isinstance(out, str) else str(out)
     except Exception as e:
         print(f"[Warn ] 模型失敗或逾時: {e}")
-        return "\n".join(raw for _, _, raw in batch)    
-    
-# ----------- 生成快取 -----------
+        return "\n".join(raw for _, _, raw in batch)
+
+
+# ----------- 生成快取（原樣保留）-----------
 class MappingStore:
     def __init__(self, path: Optional[str] = None):
-        base_dir = os.path.dirname(__file__)   # 這個檔案所在資料夾
+        base_dir = os.path.dirname(__file__)
         default_path = os.path.join(base_dir, "pii_map.json")
         self.path = path or default_path
         try:
@@ -97,7 +132,7 @@ class MappingStore:
         return val
 
 
-# 批次處理類別 "DATE_TIME"
+# ----------- 你原本的 Presidio 類型集合（原樣保留）-----------
 PRESIDIO_TYPES = {
     "EMAIL_ADDRESS",
     "PHONE_NUMBER", "TW_PHONE_NUMBER",
@@ -106,19 +141,19 @@ PRESIDIO_TYPES = {
     "IP_ADDRESS", "URL", "MAC_ADDRESS",
     "TW_ID_NUMBER", "UNIFIED_BUSINESS_NO", "TW_HEALTH_INSURANCE", "TW_PASSPORT_NUMBER",
     "UK_NHS",
-    }
+}
 
 
 def _presidio_replace_one(e_type: str, raw: str) -> str:
-    """呼叫replace_pii，但只替換這個 raw 片段。"""
     tmp_text = raw
     tmp_spans = [{"entity_type": e_type, "start": 0, "end": len(raw), "raw_txt": raw, "score": 1.0}]
     try:
         return _presidio_replace(tmp_text, tmp_spans)
     except Exception:
-        return raw  # 保底，避免炸掉
+        return raw  # 保底
 
-# ----------- 模型批次 prompt -----------
+
+# ----------- 模型批次 prompt（原樣保留）-----------
 SYSTEM_PROMPT = (
     "You anonymize sensitive strings.\n"
     "RULES:\n"
@@ -140,17 +175,24 @@ SYSTEM_PROMPT = (
 )
 
 def build_user_prompt(batch):
-    # [(idx, e_type, raw), ...]
     lines = ["Items to replace (one replacement per line, in order):"]
     for _, e_type, raw in batch:
         lines.append(f"type={e_type}; raw={raw}")
     return "\n".join(lines)
 
 
-# ----------- 替換-----------
-def replace_entities(text: str, spans: List[Dict], chat_client, mapping: Optional[MappingStore] = None,
-                     batch_size: int = 30, debug: bool = True) -> str:
+# ----------- 主函式：替換（保留原介面，預設用 KuwaChatClient）-----------
+def replace_entities(
+    text: str,
+    spans: List[Dict],
+    chat_client=None,
+    mapping: Optional[MappingStore] = None,
+    batch_size: int = 30,
+    debug: bool = True,
+) -> str:
     mapping = mapping or MappingStore()
+    chat_client = chat_client or KuwaChatClient()  # ← 不傳就用 Kuwa
+
     prepared: Dict[int, str] = {}
     need_model: List[Tuple[int, str, str]] = []
 
@@ -160,7 +202,7 @@ def replace_entities(text: str, spans: List[Dict], chat_client, mapping: Optiona
         for s in spans:
             print("  -", s)
 
-    # 2) 路由與快取
+    # 2) 路由 + 快取
     for i, s in enumerate(spans):
         e_type = s.get("entity_type")
         start, end = int(s["start"]), int(s["end"])
@@ -177,7 +219,6 @@ def replace_entities(text: str, spans: List[Dict], chat_client, mapping: Optiona
             mapping.put(e_type, raw, rep)
             prepared[i] = rep
             if debug: print(f"[Local ] presidio 替換 #{i}: {e_type} {raw!r} -> {rep!r}")
-
         else:
             need_model.append((i, e_type, raw))
             if debug: print(f"[Model ] 模型處理 #{i}: {e_type} {raw!r}")
@@ -185,40 +226,35 @@ def replace_entities(text: str, spans: List[Dict], chat_client, mapping: Optiona
     # 3) 模型批次
     for j in range(0, len(need_model), batch_size):
         batch = need_model[j:j + batch_size]
-        if not batch: break
-        user_prompt = build_user_prompt(batch)
-        
+        if not batch:
+            break
 
+        user_prompt = build_user_prompt(batch)
         if debug:
             print("\n[Model] 發送批次：")
             print(user_prompt)
 
-        # 呼叫後
         out = _safe_chat(chat_client, SYSTEM_PROMPT, user_prompt, batch, timeout_sec=10)
+        lines = (out or "").strip().splitlines()
 
-        # 解析 → 一行對一項
-        lines = out.strip().splitlines()
-
-        # 如果行數不足，補到跟 batch 一樣多（用 fallback）
+        # 補齊
         while len(lines) < len(batch):
             lines.append("")
 
         for line, (i, e_type, raw) in zip(lines, batch):
             rep = (line or "").strip()
-
-            if (not rep) or (rep.strip() == "") or (rep == raw):
-                # 不進行任何擾動：維持原文字
-                rep = raw
-
+            if (not rep) or (rep == raw):
+                rep = raw  # 保守處理
             mapping.put(e_type, raw, rep)
             prepared[i] = rep
             if debug:
                 print(f"[Model] 批次結果 #{i}: {raw!r} -> {rep!r}")
 
-    # 4) 右→左替換
+    # 4) 右→左套用
     new_text = text
     for i, s in sorted(enumerate(spans), key=lambda x: int(x[1]["start"]), reverse=True):
-        if i not in prepared: continue
+        if i not in prepared:
+            continue
         start, end = int(s["start"]), int(s["end"])
         before = new_text
         new_text = new_text[:start] + prepared[i] + new_text[end:]
@@ -227,6 +263,4 @@ def replace_entities(text: str, spans: List[Dict], chat_client, mapping: Optiona
 
     if debug:
         print("\n[Done ] 最終輸出：", new_text)
-
     return new_text
-

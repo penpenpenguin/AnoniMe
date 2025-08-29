@@ -5,7 +5,7 @@ from docx import Document
 from pii_models.presidio_detector import detect_pii
 from faker_models.presidio_replacer_plus import replace_pii
 # from faker_models.ai_replacer import replace_entities
-from faker_models.muiltAI_pii_replace import replace_entities, MappingStore, LlamaChatClient
+from faker_models.muiltAI_pii_replace import replace_entities, MappingStore, KuwaChatClient
 
 class DocxHandler:
     """
@@ -14,7 +14,7 @@ class DocxHandler:
     """
     # 新增：初始化 LlamaChatClient 和 MappingStore
     def __init__(self):                                   
-        self.client = LlamaChatClient()
+        self.client = KuwaChatClient()
         self.mapping = MappingStore()
 
     def deidentify(self, input_path: str, output_path: str, language: str = "auto") -> str:

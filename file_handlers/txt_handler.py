@@ -2,7 +2,7 @@
 import os
 from pii_models.presidio_detector import detect_pii
 from faker_models.presidio_replacer_plus import replace_pii
-from faker_models.muiltAI_pii_replace import replace_entities, MappingStore, LlamaChatClient
+from faker_models.muiltAI_pii_replace import replace_entities, MappingStore, KuwaChatClient
 
 
 class TextHandler:
@@ -11,8 +11,8 @@ class TextHandler:
     抽取純文字、替換 PII、再輸出純文字檔。
     """
     # 新增：初始化 LlamaChatClient 和 MappingStore
-    def __init__(self):                                   
-        self.client = LlamaChatClient()
+    def __init__(self):
+        self.client = KuwaChatClient()
         self.mapping = MappingStore()
 
     def deidentify(self, input_path: str, output_path: str, language: str = "auto") -> str:
