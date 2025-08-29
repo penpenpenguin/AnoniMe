@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 
+
 CheckBox {
     id: root
     property string optionKey: ""    // 新增：對應後端處理鍵

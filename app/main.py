@@ -57,6 +57,83 @@ OPTION_META = {
 }
 
 class Backend(QObject):
+    @Slot(str)
+    def removeFile(self, path):
+        """
+        刪除指定路徑的檔案（供 UI 刪除功能使用）。
+        """
+        try:
+            if path and os.path.isfile(path):
+                os.remove(path)
+                print(f"[刪除] 已移除檔案：{path}")
+                # 從 _files 清單移除
+                if path in self._files:
+                    self._files.remove(path)
+                return True
+            else:
+                print(f"[刪除失敗] 路徑無效或檔案不存在：{path}")
+                return False
+        except Exception as e:
+            print(f"[刪除失敗] {e}")
+            return False
+    @Slot(str, str)
+    def saveFileTo(self, src_path, dest_path):
+        """
+        將 src_path 檔案複製到 dest_path（用於下載功能）。
+        """
+        try:
+            import shutil
+            if src_path and dest_path and os.path.isfile(src_path):
+                shutil.copy2(src_path, dest_path)
+                print(f"[下載] 已將 {src_path} 複製到 {dest_path}")
+                return True
+            else:
+                print(f"[下載失敗] 路徑無效或檔案不存在：{src_path} -> {dest_path}")
+                return False
+        except Exception as e:
+            print(f"[下載失敗] {e}")
+            return False
+    @Slot(str, result=str)
+    def readFileContent(self, path):
+        """
+        讀取指定檔案內容，支援 txt/docx，其他回傳占位文字。
+        """
+        # 支援 file:// URI -> 轉成本機路徑
+        try:
+            if isinstance(path, str) and path.startswith('file:'):
+                from urllib.parse import urlparse, unquote
+                p = urlparse(path)
+                local = unquote(p.path)
+                # Windows 路徑會以 /C:/ 開頭，去掉前導斜線
+                if os.name == 'nt' and local.startswith('/') and len(local) > 2 and local[2] == ':':
+                    local = local[1:]
+                path = local
+        except Exception:
+            pass
+
+        if not path or not os.path.isfile(path):
+            return "[檔案不存在]"
+
+        ext = path.lower().rsplit('.', 1)[-1] if '.' in path else ''
+        try:
+            if ext == "txt":
+                with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                    data = f.read(8000)
+                return data if data else "(空白)"
+            if ext == "docx":
+                if Document is None:
+                    return "[缺少 python-docx 套件]"
+                doc = Document(path)
+                parts = []
+                for p in doc.paragraphs:
+                    parts.append(p.text)
+                return "\n".join(parts) if parts else "(空白 DOCX)"
+            if ext == "pdf":
+                # PDF 不直接回傳完整文本；回傳簡短預覽與檔案路徑資訊
+                return f"[PDF 檔案] {os.path.basename(path)}"
+            return f"[不支援預覽: {ext}]"
+        except Exception as e:
+            return f"[讀取錯誤] {e}"
     filesChanged = Signal(list)
     resultsReady = Signal(str)  # JSON: [{fileName, type, originalText, maskedText}]
 
@@ -64,6 +141,7 @@ class Backend(QObject):
         super().__init__()
         self._files = []
         self._options = []
+        self._options_texts = []
         self._last_results = []          # 新增：快取最近一次結果
 
     # 檔案操作 -------------------------------------------------
@@ -103,6 +181,15 @@ class Backend(QObject):
     @Slot('QStringList')
     def setOptions(self, opts):
         self._options = [o for o in opts if o in OPTION_META]
+
+    @Slot('QStringList')
+    def setOptionsText(self, texts):
+        """接收來自 UI 的選項顯示文字陣列（例如 ['姓名','Email']）。"""
+        try:
+            self._options_texts = list(texts) if texts is not None else []
+            print("Backend: setOptionsText ->", self._options_texts)
+        except Exception as e:
+            print("setOptionsText error:", e)
 
     @Slot(result='QStringList')
     def getOptions(self):
@@ -296,7 +383,6 @@ class Backend(QObject):
             handler = TextHandler()
             handler.deidentify(input_path, out_path, language="auto")
             return out_path, ""
-
 
         if ftype == "docx":
             out_path = os.path.join(output_dir, f"{base}_deid.docx")
@@ -545,7 +631,12 @@ if __name__ == "__main__":
     engine = QQmlApplicationEngine()
     backend = Backend()
     engine.rootContext().setContextProperty("backend", backend)
-    engine.load("Main.qml")
+    # Ensure we load the Main.qml from the project's qml directory
+    qml_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'qml', 'Main.qml')
+    qml_url = 'file:///' + qml_file.replace('\\', '/')
+    print(f"Loading QML from: {qml_url}")
+    engine.load(qml_url)
     if not engine.rootObjects():
+        print("QQmlApplicationEngine failed to load. Check QML error output above.")
         sys.exit(-1)
     sys.exit(app.exec())

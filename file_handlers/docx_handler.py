@@ -5,19 +5,17 @@ from docx import Document
 from pii_models.presidio_detector import detect_pii
 from faker_models.presidio_replacer_plus import replace_pii
 # from faker_models.ai_replacer import replace_entities
-
-from models.providers import get_chat_client                     # ★ 只讀 .env 的那版
-from faker_models.muiltAI_pii_replace import replace_entities, MappingStore
+from faker_models.muiltAI_pii_replace import replace_entities, MappingStore, LlamaChatClient
 
 class DocxHandler:
     """
     處理 .docx 檔案 in-place 去識別化，
     保留所有段落格式、run 樣式與表格結構。
     """
-    # 新增：多模型輪替 & 映射快取
-    def __init__(self):                                   # ★ 建議加：初始化一次 client & 映射快取
-        self.client = get_chat_client()                   # ★ 多模型輪替 & 配額控管交給 providers
-        self.mapping = MappingStore() 
+    # 新增：初始化 LlamaChatClient 和 MappingStore
+    def __init__(self):                                   
+        self.client = LlamaChatClient()
+        self.mapping = MappingStore()
 
     def deidentify(self, input_path: str, output_path: str, language: str = "auto") -> str:
         """

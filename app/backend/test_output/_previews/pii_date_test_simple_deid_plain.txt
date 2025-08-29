@@ -1,0 +1,7 @@
+Date Sample File - PII Detection
+Example Date: 2025-08-25
+Example Date: 07/14/2030
+Example Date: 26-09-2025
+Example Date: September 27, 2024
+Example Date: 25th August 2025
+Example Date: 20250825

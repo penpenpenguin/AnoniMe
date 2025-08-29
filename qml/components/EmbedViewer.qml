@@ -98,6 +98,7 @@ Item {
         }
     }
     
+    
     // PDF 檢視器
     Component {
         id: pdfView
@@ -108,7 +109,8 @@ Item {
             // 元資料
             Rectangle {
                 width: parent.width
-                height: metaLayout.height + 20
+                // metaLayout was undefined in some contexts; use a safe fixed/min height
+                height: Math.max(60, childrenRect.height)
                 color: "#F0F8FF"
                 border.color: "#B0C4DE"
                 border.width: 1

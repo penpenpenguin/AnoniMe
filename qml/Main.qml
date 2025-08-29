@@ -69,6 +69,25 @@ Window {
                     pendingPayload = null
                     lastResultPayload = null
                 } else {
+                    // 嘗試直接從後端取得上次結果（若有），避免使用者看不到已處理的檔案
+                    if (typeof backend !== 'undefined' && backend.getLastResults) {
+                        try {
+                            var last = backend.getLastResults()
+                            if (last) {
+                                var parsed = JSON.parse(last)
+                                if (parsed && parsed.length) {
+                                    console.log("Loader: 從 backend.getLastResults() 補呼叫 loadResults()")
+                                    item.loadResults(parsed)
+                                    pendingPayload = null
+                                    lastResultPayload = null
+                                    return
+                                }
+                            }
+                            
+                        } catch (e) {
+                            console.log("Loader: backend.getLastResults() 取回失敗", e)
+                        }
+                    }
                     // 延遲再試一次（保險）
                     Qt.callLater(function() {
                         if (pendingPayload && item.loadResults) {
@@ -84,7 +103,7 @@ Window {
 
         onStatusChanged: {
             if (status === Loader.Error) {
-                console.log("Loader Error:", errorString())
+                console.log("Loader Error:", source)
             }
         }
     }
