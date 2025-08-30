@@ -2,7 +2,6 @@ import os
 import fitz  # PyMuPDF
 from pii_models.presidio_detector import detect_pii
 from faker_models.tony_faker import test_all_methods, keep_highest_score_per_raw_txt
-from faker_models.muiltAI_pii_replace import replace_entities, MappingStore, KuwaChatClient
 
 
 class PdfHandler :
@@ -10,10 +9,7 @@ class PdfHandler :
     從 PDF 中抽取文字並偵測 PII，回傳可閱讀的列表。
     每個實體包含：頁碼、實體類型、起訖位置、匹配文字。
     """
-    # 新增：初始化 LlamaChatClient 和 MappingStore
-    def __init__(self):
-        self.client = KuwaChatClient()
-        self.mapping = MappingStore()
+
 
     def deidentify(self, input_path: str, output_path: str, language: str = "auto") -> str:
         """

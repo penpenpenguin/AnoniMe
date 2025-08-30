@@ -15,7 +15,7 @@ class TextHandler:
         self.client = KuwaChatClient()
         self.mapping = MappingStore()
 
-    def deidentify(self, input_path: str, output_path: str, language: str = "auto") -> str:
+    def deidentify(self, input_path: str, output_path: str, selected_types: list[str] = None) -> str:
         # 檢查檔案是否存在
         if not os.path.exists(input_path):
             raise FileNotFoundError(f"找不到輸入檔: {input_path}")
@@ -35,7 +35,7 @@ class TextHandler:
                     chat_client=self.client,
                     mapping=self.mapping,        # ★ 同一份 mapping，保持一致性
                     # batch_size=30,             # 可調；大量文件時 20~50 都可
-                )
+        )
 
         # 4) 寫入輸出檔
         os.makedirs(os.path.dirname(output_path), exist_ok=True)

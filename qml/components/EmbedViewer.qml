@@ -52,7 +52,8 @@ Item {
                 text: embedData.content || ""
                 readOnly: true
                 selectByMouse: true
-                wrapMode: TextArea.Wrap
+                wrapMode: TextArea.WrapAtWordBoundaryOrAnywhere
+                textFormat: TextArea.PlainText
                 font.family: "Consolas, Monaco, monospace"
                 font.pixelSize: 12
                 

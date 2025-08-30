@@ -1,6 +1,9 @@
 # muiltAI_pii_replace.py  — 改用 KuwaClient，不再載本地 HF 模型
 import os, json, hashlib
 from typing import List, Dict, Tuple, Optional
+import asyncio
+import types
+
 
 # 你原本的 presidio 替換器
 from faker_models.presidio_replacer_plus import replace_pii as _presidio_replace
@@ -53,26 +56,27 @@ class KuwaChatClient:
             auth_token=self.api_key,
         )
 
+
+
     def chat(self, system_prompt: str, user_prompt: str) -> str:
-        """
-        回傳純文字。非串流（streaming=False），方便同步流程。
-        KuwaClient 若回字串就直接用；若回 dict/obj 嘗試取 content。
-        """
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ]
-        # 有些版本 chat_complete 支援 streaming 參數；這裡關閉串流，要求一次回覆
         resp = self._client.chat_complete(
             messages=messages,
             streaming=False,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            model=self.model,  # 明確指定，避免 client 預設未對齊
         )
 
-        # 兼容不同回傳格式
-        if isinstance(resp, str):
+        # 如果 resp 是 async generator，收集所有 chunk
+        if isinstance(resp, types.AsyncGeneratorType):
+            async def collect():
+                result = ""
+                async for chunk in resp:
+                    result += chunk
+                return result
+            text = asyncio.run(collect())
+        elif isinstance(resp, str):
             text = resp
         elif isinstance(resp, dict):
             text = (
@@ -82,11 +86,9 @@ class KuwaChatClient:
                 or ""
             )
         else:
-            # 某些版本可能回物件，盡量取 content 屬性
             text = getattr(resp, "content", "") or str(resp)
 
         text = (text or "").strip()
-        # 只取第一個非空行，避免多餘說明
         for line in text.splitlines():
             line = line.strip()
             if line:
@@ -95,7 +97,7 @@ class KuwaChatClient:
 
 
 # ----------- safe chat 包裝（原樣保留）-----------
-def _safe_chat(chat_client, system_prompt: str, user_prompt: str, batch, timeout_sec: int = 10) -> str:
+def _safe_chat(chat_client, system_prompt: str, user_prompt: str, batch, timeout_sec: int = 20) -> str:
     import time
     t0 = time.time()
     try:
@@ -134,9 +136,9 @@ class MappingStore:
 
 # ----------- 你原本的 Presidio 類型集合（原樣保留）-----------
 PRESIDIO_TYPES = {
-    "EMAIL_ADDRESS",
+    "EMAIL_ADDRESS","ADDRESS",
     "PHONE_NUMBER", "TW_PHONE_NUMBER",
-    "DATE", "TIME", "DURATION_TIME",
+    "DATE_TIME", "DURATION_TIME",
     "CREDIT_CARD",
     "IP_ADDRESS", "URL", "MAC_ADDRESS",
     "TW_ID_NUMBER", "UNIFIED_BUSINESS_NO", "TW_HEALTH_INSURANCE", "TW_PASSPORT_NUMBER",
@@ -155,23 +157,7 @@ def _presidio_replace_one(e_type: str, raw: str) -> str:
 
 # ----------- 模型批次 prompt（原樣保留）-----------
 SYSTEM_PROMPT = (
-    "You anonymize sensitive strings.\n"
-    "RULES:\n"
-    "1) Output EXACTLY one line per item, in order, no extra text.\n"
-    "2) Each line = replacement ONLY (no index/labels/quotes).\n"
-    "3) Keep the same language/script as raw; keep punctuation/spaces.\n"
-    "4) Preserve the overall pattern (letters vs digits vs symbols) and length within ±2 chars.\n"
-    "5) The value MUST differ from raw; if unsure, minimally perturb letters/digits.\n"
-    "\n"
-    "Examples:\n"
-    "Items to replace (one replacement per line, in order):\n"
-    "type=PERSON; raw=John Doe\n"
-    "type=ORGANIZATION; raw=Acme Corp.\n"
-    "type=LOCATION; raw=New Taipei City\n"
-    "===\n"
-    "Jonn Dae\n"
-    "Acna Carp.\n"
-    "New Taipel Citz\n"
+    "Replace each item with a fake value. Output only the replacement value for each item, one per line, without any type or raw label. Do not repeat the input format, just output the new value."
 )
 
 def build_user_prompt(batch):

@@ -202,6 +202,7 @@ def replace_pii(text, analyzer_results):
         elif et == "LOCATION":
             new_value = fake.address()
             
+            
         elif et == "IP_ADDRESS":
             new_value = fake.ipv4()
 
@@ -234,6 +235,7 @@ def replace_pii(text, analyzer_results):
 
         elif et == "TW_PASSPORT_NUMBER":
             new_value = f"3{''.join([str(random.randint(0,9)) for _ in range(7)])}"
+            
         else:
             new_value = detected_text  # 保留原始文字
         

@@ -3,8 +3,8 @@ Test TEXT File (Sample Test Page)
 
 This TEXT file is generated for testing purposes. It includes various elements for scraping tests.
 
-Lucas Chu is a NTU student here in Taiwan. He's 14 years old and his email is user@example.com
-His phone number is 0923810877. Contact if needed!
+type=ARTIST; raw=Balthazar McSnazz is a NTU student here in Taiwan. He's 8 years old and his email is user@example.com
+His phone number is 0942742078. Contact if needed!
 
 
 Tomorrow is 2025/08/23
@@ -12,6 +12,6 @@ Tomorrow is 2025/08/23
 09-FEB-2025 is not my birthday.
 
 
-Tony Wu is already working in a company named SexyFox.
+type=PERSON; raw=Finnley Wyst is already working in a company named SexyFox.
 
-身分證號是 O296314795。台大統編是 73281279。
+身分證號是 M113727910。台大統編是 90177162。

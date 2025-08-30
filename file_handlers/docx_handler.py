@@ -17,7 +17,7 @@ class DocxHandler:
         self.client = KuwaChatClient()
         self.mapping = MappingStore()
 
-    def deidentify(self, input_path: str, output_path: str, language: str = "auto") -> str:
+    def deidentify(self, input_path: str, output_path: str, selected_types: list[str] = None) -> str:
         """
         1. 讀取 input_path 的 Word 文件
         2. 針對每個 run.text 呼叫 detect_pii() + replace_pii()
@@ -41,8 +41,8 @@ class DocxHandler:
             
             if entities:
                 # 生成替換後的完整文字
-                #new_full_text = replace_pii(full_text, entities)
-                #new_full_text = replace_entities(full_text, entities)
+                # new_full_text = replace_pii(full_text, entities)
+                new_full_text = replace_entities(full_text, entities)
                 new_full_text = replace_entities(                   # ★ (新)
                     full_text,
                     entities,
@@ -79,7 +79,7 @@ class DocxHandler:
                         if entities:
                             # 生成替換後的完整文字
                             # new_full_text = replace_pii(full_text, entities)
-                            # new_full_text = replace_entities(full_text, entities)
+                            new_full_text = replace_entities(full_text, entities)
                             new_full_text = replace_entities(                          # ★ (新)
                                 full_text,
                                 entities,
@@ -101,4 +101,5 @@ class DocxHandler:
         # 儲存結果
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
         doc.save(output_path)
+        print(f"儲存結果：{output_path}")
         return output_path

@@ -1,9 +1,77 @@
 import QtQuick
 import QtQuick.Controls
 
-/**
- * 遮蔽選項設定區域組件
- * 包含常用區、其他區和生成按鈕
+/*            // 標題
+            Row {
+                width: parent.width
+                spacing: 12
+                
+                Rectangle {
+                    width: 4
+                    height: 24
+                    radius: 2
+                    color: "#66FCF1"
+                }
+                
+                Text {
+                    text: "常用區"
+                    font.pixelSize: 18
+                    font.weight: Font.Bold
+                    color: "#66FCF1"
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                
+                // 占位空間
+                Item {
+                    width: parent.width - 200  // 動態調整寬度
+                    height: 24
+                }
+                
+                // 全選 checkbox
+                Row {
+                    spacing: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    
+                    CheckBox {
+                        id: selectAllCheckbox
+                        checked: true  // 預設勾選
+                        
+                        indicator: Rectangle {
+                            implicitWidth: 20
+                            implicitHeight: 20
+                            radius: 4
+                            color: parent.checked ? "#66FCF1" : "transparent"
+                            border.width: 2
+                            border.color: "#66FCF1"
+                            
+                            Text {
+                                anchors.centerIn: parent
+                                text: "✓"
+                                color: "#0B1426"
+                                font.pixelSize: 12
+                                font.weight: Font.Bold
+                                visible: parent.parent.checked
+                            }
+                        }
+                        
+                        onToggled: {
+                            // 當全選checkbox被點擊時，切換所有常用選項的狀態
+                            for (var i = 0; i < commonOptions.length; i++) {
+                                if (commonOptions[i].selected !== checked) {
+                                    root.optionToggled("common", i)
+                                }
+                            }
+                        }
+                    }
+                    
+                    Text {
+                        text: "全選"
+                        font.pixelSize: 14
+                        color: "#66FCF1"
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+            } 包含常用區、其他區和生成按鈕
  */
 Column {
     id: root
@@ -13,10 +81,12 @@ Column {
     property var commonOptions: []
     property var otherOptions: []
     property bool canGenerate: false
+    property bool selectAllCommon: true  // 新增：全選常用選項狀態
     
     // 信號
     signal optionToggled(string category, int index)
     signal generateClicked()
+    signal selectAllCommonToggled()  // 新增：全選常用選項切換信號
     
     // 標題
     Text {
@@ -43,6 +113,7 @@ Column {
             
             // 標題
             Row {
+                width: parent.width
                 spacing: 12
                 
                 Rectangle {
@@ -58,6 +129,58 @@ Column {
                     font.weight: Font.Bold
                     color: "#66FCF1"
                     anchors.verticalCenter: parent.verticalCenter
+                }
+                
+                // 全選 checkbox
+                Item {
+                    width: parent.width - x - 20  // 佔據剩餘空間
+                    height: 24
+                    
+                    Row {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 8
+                        
+                        CheckBox {
+                            id: selectAllCheckbox
+                            checked: root.selectAllCommon
+                            
+                            onCheckedChanged: {
+                                if (checked !== root.selectAllCommon) {
+                                    root.selectAllCommonToggled()
+                                }
+                            }
+                            
+                            // 自訂樣式
+                            indicator: Rectangle {
+                                implicitWidth: 18
+                                implicitHeight: 18
+                                x: selectAllCheckbox.leftPadding
+                                y: parent.height / 2 - height / 2
+                                radius: 3
+                                border.color: selectAllCheckbox.checked ? "#66FCF1" : "#4A4A4A"
+                                border.width: 2
+                                color: selectAllCheckbox.checked ? Qt.rgba(0.4, 0.99, 0.95, 0.2) : "transparent"
+                                
+                                Rectangle {
+                                    width: 8
+                                    height: 8
+                                    radius: 2
+                                    anchors.centerIn: parent
+                                    color: "#66FCF1"
+                                    visible: selectAllCheckbox.checked
+                                }
+                            }
+                            
+                            contentItem: Text {
+                                text: "全選"
+                                font.pixelSize: 14
+                                color: "#CCCCCC"
+                                leftPadding: selectAllCheckbox.indicator.width + selectAllCheckbox.spacing
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                        }
+                    }
                 }
             }
             

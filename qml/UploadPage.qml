@@ -21,6 +21,7 @@ Item {
     // ==================== 狀態屬性 ====================
     readonly property bool canGenerate: _hasFiles && _hasOptions && !_uploading
     readonly property int fileCount: fileManager.count
+    readonly property var selectedOptionTexts: optionManager.selectedOptionTexts  // 新增：外部可存取的選項文字列表
     
     // 私有狀態
     property bool _hasFiles: fileManager.count > 0
@@ -88,15 +89,26 @@ Item {
     // 選項管理器
     QtObject {
         id: optionManager
-    property bool hasSelectedOptions: _checkSelectedOptions()
-    // 實時保持被選取項目的顯示文字陣列
-    property var selectedOptionTexts: []
+        property bool hasSelectedOptions: _checkSelectedOptions()
+        // 實時保持被選取項目的顯示文字陣列
+        property var selectedOptionTexts: []
+        // 全選常用選項的狀態（預設為 true）
+        property bool selectAllCommon: true
 
         property var commonOptions: [
             { key: "name", text: "姓名", selected: false },
             { key: "email", text: "Email", selected: false },
             { key: "phone", text: "電話", selected: false },
-            { key: "address", text: "地址", selected: false }
+            { key: "address", text: "地址", selected: false },
+            { key: "CREDIT_CARD", text: "信用卡", selected: false },
+            { key: "TW_ID_NUMBER", text: "身份證字號", selected: false },
+            { key: "TW_NHI_NUMBER", text: "健保卡號", selected: false },
+            { key: "DATE_TIME", text: "時間", selected: false },
+            { key: "UNIFIED_BUSINESS_NO", text: "統編", selected: false },
+            { key: "TW_PHONE_NUMBER", text: "電話", selected: false },
+            { key: "IP_ADDRESS", text: "IP位址", selected: false },
+            { key: "TW_PASSPORT_NUMBER", text: "護照號碼", selected: false },
+            { key: "URL", text: "網址", selected: false },
         ]
 
         property var otherOptions: [
@@ -105,6 +117,14 @@ Item {
             { key: "company", text: "公司名稱", selected: false },
             { key: "bank", text: "銀行帳號", selected: false }
         ]
+
+        // 初始化時設定選取文字列表並應用預設全選
+        Component.onCompleted: {
+            if (selectAllCommon) {
+                toggleAllCommonOptions(true)
+            }
+            selectedOptionTexts = getSelectedOptionTexts()
+        }
 
         function toggleOption(category, index) {
             var options = category === "common" ? commonOptions : otherOptions
@@ -116,6 +136,9 @@ Item {
                     newCommonOptions.push(options[i])
                 }
                 commonOptions = newCommonOptions
+                
+                // 檢查並更新全選常用選項的狀態
+                selectAllCommon = areAllCommonOptionsSelected()
             } else {
                 var newOtherOptions = []
                 for (var j = 0; j < options.length; j++) {
@@ -128,6 +151,12 @@ Item {
             root._hasOptions = hasSelectedOptions
             // 更新選取文字列表
             selectedOptionTexts = getSelectedOptionTexts()
+            
+            // 除錯輸出
+            console.log("選項變更:", category, index, "目前選取的文字:", JSON.stringify(selectedOptionTexts))
+            if (category === "common") {
+                console.log("全選常用選項狀態:", selectAllCommon)
+            }
         }
 
         function _checkSelectedOptions() {
@@ -165,6 +194,66 @@ Item {
                 if (otherOptions[j].selected) selected.push(otherOptions[j].text)
             }
             return selected
+        }
+
+        // 取得選取的選項完整資訊（包含 key, text, selected）
+        function getSelectedOptionsInfo() {
+            var selected = []
+            for (var i = 0; i < commonOptions.length; i++) {
+                if (commonOptions[i].selected) {
+                    selected.push({
+                        key: commonOptions[i].key,
+                        text: commonOptions[i].text,
+                        category: "common"
+                    })
+                }
+            }
+            for (var j = 0; j < otherOptions.length; j++) {
+                if (otherOptions[j].selected) {
+                    selected.push({
+                        key: otherOptions[j].key,
+                        text: otherOptions[j].text,
+                        category: "other"
+                    })
+                }
+            }
+            return selected
+        }
+
+        // 切換全選常用選項的狀態
+        function toggleSelectAllCommon() {
+            selectAllCommon = !selectAllCommon
+            toggleAllCommonOptions(selectAllCommon)
+            console.log("全選常用選項:", selectAllCommon ? "開啟" : "關閉")
+        }
+
+        // 設定所有常用選項的選取狀態
+        function toggleAllCommonOptions(selected) {
+            var newCommonOptions = []
+            for (var i = 0; i < commonOptions.length; i++) {
+                var option = {
+                    key: commonOptions[i].key,
+                    text: commonOptions[i].text,
+                    selected: selected
+                }
+                newCommonOptions.push(option)
+            }
+            commonOptions = newCommonOptions
+            
+            // 更新相關狀態
+            hasSelectedOptions = _checkSelectedOptions()
+            root._hasOptions = hasSelectedOptions
+            selectedOptionTexts = getSelectedOptionTexts()
+            
+            console.log("常用選項批量設定:", selected ? "全選" : "全不選", "目前選取:", JSON.stringify(selectedOptionTexts))
+        }
+
+        // 檢查是否所有常用選項都被選取
+        function areAllCommonOptionsSelected() {
+            for (var i = 0; i < commonOptions.length; i++) {
+                if (!commonOptions[i].selected) return false
+            }
+            return true
         }
     }
 
@@ -265,6 +354,16 @@ Item {
             uploadManager.hide()
         }
     }
+    
+    // 取得目前選取的選項文字列表
+    function getSelectedOptionTextsList() {
+        return optionManager.getSelectedOptionTexts()
+    }
+    
+    // 取得目前選取的選項完整資訊
+    function getSelectedOptionsInfo() {
+        return optionManager.getSelectedOptionsInfo()
+    }
 
     // ==================== UI 佈局 ====================
     
@@ -364,14 +463,19 @@ Item {
 
                 commonOptions: optionManager.commonOptions
                 otherOptions: optionManager.otherOptions
+                selectAllCommon: optionManager.selectAllCommon  // 新增：全選常用選項狀態
 
                 onOptionToggled: function(category, index) { optionManager.toggleOption(category, index) }
+                onSelectAllCommonToggled: function() { optionManager.toggleSelectAllCommon() }  // 新增：全選切換
 
                 onGenerateClicked: {
                     if (!root.canGenerate) return
                     
                     var selectedOptions = optionManager.getSelectedOptionKeys()
-                    console.log("生成處理 - 選中選項:", selectedOptions.join(", "))
+                    var selectedTexts = optionManager.getSelectedOptionTexts()
+                    
+                    console.log("生成處理 - 選中選項keys:", selectedOptions.join(", "))
+                    console.log("生成處理 - 選中選項texts:", selectedTexts.join(", "))
                     
                     if (typeof backend !== "undefined" && backend.processFiles) {
                         if (backend.setOptions) {
@@ -380,7 +484,8 @@ Item {
                         // 傳送選項顯示文字給後端，以供替換器使用
                         if (backend.setOptionsText) {
                             try {
-                                backend.setOptionsText(optionManager.getSelectedOptionTexts())
+                                backend.setOptionsText(selectedTexts)
+                                console.log("已傳送選項文字到後端:", JSON.stringify(selectedTexts))
                             } catch (e) {
                                 console.warn("setOptionsText failed:", e)
                             }
